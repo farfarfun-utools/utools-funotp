@@ -13,8 +13,9 @@ node -e "if (Number(process.versions.node.split('.')[0]) < 20) process.exit(1)" 
 }
 
 pnpm install --frozen-lockfile
-pnpm test
 pnpm lint
+pnpm typecheck
+pnpm test
 node --check "$PLUGIN_DIR/preload.js"
 node -e "JSON.parse(require('fs').readFileSync('$PLUGIN_DIR/plugin.json', 'utf8'))"
 rm -rf -- "$PLUGIN_DIR/dist"

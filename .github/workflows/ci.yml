@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # uTools 8.0 内置 Node 20，22 用来提前发现下一个 LTS 上的问题。
+        node: ['20', '22']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.10.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      # build.sh 还会校验 preload.js、plugin.json 和打包产物的完整性。
+      - name: Build plugin
+        run: ./build.sh
+
+      - name: Upload plugin dist
+        if: matrix.node == '20'
+        uses: actions/upload-artifact@v4
+        with:
+          name: utools-funotp
+          path: |
+            utools/dist
+            utools/plugin.json
+            utools/preload.js
+            utools/logo.png
+            utools/search.png
+          retention-days: 7

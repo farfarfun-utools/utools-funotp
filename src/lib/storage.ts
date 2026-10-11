@@ -25,10 +25,18 @@ export function readStorage(key, fallback = null) {
   return legacy
 }
 
+// dbStorage 落在 uTools 文档数据库上，单个文档上限 1MB。
+// 超了 setItem 会直接抛错，提前拦一下才能给出用户看得懂的提示。
+const MAX_DOC_BYTES = 1024 * 1024
+
 export function writeStorage(key, value) {
-  // dbStorage 不接受 Vue 的响应式代理，这里统一转成纯对象。
-  const plain = JSON.parse(JSON.stringify(value))
+  // dbStorage 不接受 Vue 的响应式代理，序列化一次既摊平成纯数据又能量出体积。
+  const text = JSON.stringify(value)
+  const bytes = new TextEncoder().encode(text).length
+  if (bytes > MAX_DOC_BYTES) {
+    throw new Error(`数据已达 ${Math.round(bytes / 1024)}KB，超出 uTools 单条数据 1MB 上限，请先精简备注或清空废纸篓`)
+  }
   const store = db()
-  if (store) store.setItem(key, plain)
-  else localStorage.setItem(key, JSON.stringify(plain))
+  if (store) store.setItem(key, JSON.parse(text))
+  else localStorage.setItem(key, text)
 }

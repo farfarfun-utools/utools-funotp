@@ -7,17 +7,19 @@
   "preload": "preload.js",
   "logo": "logo.png",
   "pluginSetting": {
-    "height": 1
+    "height": 558
   },
   "features": [
     {
       "code": "funotp",
+      "description": "管理两步验证账号并复制动态验证码",
       "explain": "管理两步验证账号并复制动态验证码",
       "icon": "logo.png",
       "cmds": ["FunOTP", "两步验证", "动态验证码", "totp", "2fa"]
     },
     {
       "code": "search-otp",
+      "description": "搜索账号并直接复制验证码",
       "explain": "搜索账号并直接复制验证码",
       "icon": "search.png",
       "cmds": [
@@ -32,6 +34,7 @@
     },
     {
       "code": "add-otp",
+      "description": "把 otpauth 链接添加到 FunOTP",
       "explain": "把 otpauth 链接添加到 FunOTP",
       "icon": "logo.png",
       "cmds": [

@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, nextTick, reactive, ref, watch } from 'vue'
+import type { PropType } from 'vue'
 import { COLORS, colorFor, initials, safeColor } from '../lib/core'
+import type { Group } from '../lib/core'
 import { formatCode, generateOtp } from '../lib/otp'
 import { parseOtpauthText } from '../lib/otpauth'
 import { decodeQrImage, readClipboardImage } from '../lib/qr'
 
 const props = defineProps({
-  groups: { type: Array, default: () => [] },
+  groups: { type: Array as PropType<Group[]>, default: () => [] },
   defaultGroupId: { type: String, default: '' },
 })
 const emit = defineEmits(['save', 'import', 'message'])
@@ -169,14 +171,16 @@ defineExpose({ open, close })
         <span class="otp-dialog-avatar" :style="{ backgroundColor: safeColor(draft.color) }">{{ avatarText }}</span>
         <div>
           <h2 id="account-dialog-title">{{ editing ? '编辑账号' : '添加账号' }}</h2>
-          <p>密钥只保存在本机，不会上传到任何服务器</p>
+          <p>验证码在本机离线计算，密钥只存在 uTools 数据库里</p>
         </div>
         <button type="button" class="dialog-close" aria-label="关闭" @click="close">×</button>
       </header>
 
       <div v-if="!editing" class="mode-tabs" role="tablist">
-        <button v-for="tab in [['scan', '扫码识别'], ['uri', '粘贴链接'], ['manual', '手动输入']]" :key="tab[0]"
-          type="button" role="tab" :aria-selected="mode === tab[0]" :class="{ active: mode === tab[0] }" @click="mode = tab[0]">
+        <button
+          v-for="tab in [['scan', '扫码识别'], ['uri', '粘贴链接'], ['manual', '手动输入']]" :key="tab[0]"
+          type="button" role="tab" :aria-selected="mode === tab[0]" :class="{ active: mode === tab[0] }" @click="mode = tab[0]"
+        >
           {{ tab[1] }}
         </button>
       </div>

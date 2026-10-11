@@ -4,7 +4,13 @@
     "useDefineForClassFields": true,
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    // strict 全开目前还差 74 处 strictNullChecks + 134 处 noImplicitAny（基本都在 .vue 的事件处理函数签名上），
+    // 先把不用改代码就能通过的几项打开，剩下的按文件逐步补。
     "strict": false,
+    "noImplicitThis": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "forceConsistentCasingInFileNames": true,
     "isolatedModules": true,
     "skipLibCheck": true,
     "lib": ["ES2022", "DOM", "DOM.Iterable"],

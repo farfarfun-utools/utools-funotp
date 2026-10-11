@@ -17,9 +17,7 @@ export interface Account {
   encoding?: string
   groupIds?: string[]
   color?: string
-  iconType?: 'image' | 'text'
   icon?: string
-  iconData?: string
   favorite?: boolean
   quick?: boolean
   note?: string
@@ -124,9 +122,7 @@ export function normalizeAccount(input: Account): Account {
   account.encoding = account.encoding === 'steam' ? 'steam' : 'standard'
   account.groupIds = normalizeGroupIds(account.groupIds)
   account.color = safeColor(account.color || colorFor(account.issuer || account.name))
-  account.iconType = account.iconType === 'image' && account.iconData ? 'image' : 'text'
   account.icon = String(account.icon || '').trim() || initials(account.issuer || account.name)
-  account.iconData = account.iconType === 'image' ? String(account.iconData || '') : ''
   account.favorite = Boolean(account.favorite)
   account.quick = Boolean(account.quick)
   account.note = String(account.note || '')

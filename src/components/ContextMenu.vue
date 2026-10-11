@@ -1,8 +1,18 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from 'vue'
+import type { PropType } from 'vue'
+
+interface MenuItem {
+  action: string
+  label: string
+  icon?: string
+  danger?: boolean
+  /** 在这一项后面画一条分隔线。 */
+  divided?: boolean
+}
 
 const props = defineProps({
-  items: { type: Array, required: true },
+  items: { type: Array as PropType<MenuItem[]>, required: true },
   x: { type: Number, required: true },
   y: { type: Number, required: true },
 })

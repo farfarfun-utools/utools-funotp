@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { nextTick, ref } from 'vue'
+import type { PropType } from 'vue'
+import type { Group } from '../lib/core'
 
-const props = defineProps({
-  groups: { type: Array, required: true },
-  groupCount: { type: Function, required: true },
+defineProps({
+  groups: { type: Array as PropType<Group[]>, required: true },
+  groupCount: { type: Function as PropType<(groupId: string) => number>, required: true },
 })
 const emit = defineEmits(['add', 'action'])
 const dialog = ref(null)

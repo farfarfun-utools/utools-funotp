@@ -15,7 +15,7 @@ export function normalizeSecret(value: unknown): string {
  * @returns 解码后的字节。
  * @throws 密钥为空、过短或含有非法字符时抛出错误。
  */
-export function base32Decode(value: unknown): Uint8Array {
+export function base32Decode(value: unknown): Uint8Array<ArrayBuffer> {
   const input = normalizeSecret(value)
   if (!input) throw new Error('请输入密钥')
   const bytes = []

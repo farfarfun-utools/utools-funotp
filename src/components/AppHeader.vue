@@ -1,6 +1,9 @@
 <script setup lang="ts">
+import type { PropType } from 'vue'
+import type { Group } from '../lib/core'
+
 defineProps({
-  groups: { type: Array, required: true },
+  groups: { type: Array as PropType<Group[]>, required: true },
   currentView: { type: String, required: true },
   theme: { type: String, required: true },
   rounded: { type: Number, default: 36 },

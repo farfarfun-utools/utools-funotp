@@ -16,7 +16,6 @@ export function emptyState() {
     version: 1,
     theme: 'system',
     currentView: 'all',
-    lastGroupId: '',
     settings: JSON.parse(JSON.stringify(DEFAULT_SETTINGS)),
     groups: [],
     accounts: [],
@@ -38,8 +37,21 @@ export function hydrateState(state) {
   if (state.currentView.startsWith('group:') && !state.groups.some(group => group.id === state.currentView.slice(6))) {
     state.currentView = 'all'
   }
-  state.lastGroupId = state.currentView.startsWith('group:') ? state.currentView.slice(6) : ''
   return state
+}
+
+// 方向键移动选中卡片。放在这里是因为它是纯计算，可以直接单测，不用把整个 composable 架起来。
+/** 计算方向键移动后的选中下标。
+ * @param current 当前下标，-1 表示还没有显式选中。
+ * @param delta 位移，正数往后、负数往前；上下键传的是一行的列数。
+ * @param total 列表长度。
+ * @returns 夹在列表范围内的新下标，列表为空时返回 -1。
+ */
+export function nextIndex(current, delta, total) {
+  if (total <= 0) return -1
+  // 还没选中时，往后走从第一张开始，往前走从最后一张开始。
+  if (current < 0) return delta > 0 ? 0 : total - 1
+  return Math.min(Math.max(current + delta, 0), total - 1)
 }
 
 export function prepareState(saved) {

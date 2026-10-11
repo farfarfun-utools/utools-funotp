@@ -1,4 +1,4 @@
-import { base32Decode } from './base32'
+import { base32Decode, normalizeSecret } from './base32'
 
 // 全部计算都在本地完成，密钥不出设备，也不需要联网。
 export const ALGORITHMS = { SHA1: 'SHA-1', SHA256: 'SHA-256', SHA512: 'SHA-512' }
@@ -26,7 +26,7 @@ const STEAM_DIGITS = 5
  * @param counter HOTP 计数器。
  * @returns 计数器字节数组。
  */
-export function counterBytes(counter: number | bigint): Uint8Array {
+export function counterBytes(counter: number | bigint): Uint8Array<ArrayBuffer> {
   const bytes = new Uint8Array(8)
   let value = BigInt(counter)
   for (let index = 7; index >= 0 && value > 0n; index -= 1) {
@@ -49,9 +49,30 @@ export function truncate(digest: Uint8Array): number {
     + digest[offset + 3]
 }
 
-async function hmac(algorithm, key, message) {
+// importKey 每个周期、每个账号都要跑两次（当前码 + 下一个码），结果按「算法 + 密钥」缓存。
+// 缓存的是不可导出的 CryptoKey，和内存里本来就有的明文密钥相比没有额外暴露。
+const keyCache = new Map<string, Promise<CryptoKey>>()
+const KEY_CACHE_LIMIT = 128
+
+function hmacKey(hash: string, secret: string): Promise<CryptoKey> {
+  const cacheKey = `${hash}|${secret}`
+  const cached = keyCache.get(cacheKey)
+  if (cached) return cached
+  // 添加账号时每敲一个字符都会试算一次预览，键入的半截密钥会攒在这里，到量了就整体丢掉。
+  if (keyCache.size >= KEY_CACHE_LIMIT) keyCache.clear()
+  const pending = crypto.subtle
+    .importKey('raw', base32Decode(secret), { name: 'HMAC', hash }, false, ['sign'])
+    .catch(error => {
+      keyCache.delete(cacheKey)
+      throw error
+    })
+  keyCache.set(cacheKey, pending)
+  return pending
+}
+
+async function hmac(algorithm: string, secret: string, message: Uint8Array<ArrayBuffer>) {
   const hash = ALGORITHMS[algorithm] || ALGORITHMS.SHA1
-  const cryptoKey = await crypto.subtle.importKey('raw', key, { name: 'HMAC', hash }, false, ['sign'])
+  const cryptoKey = await hmacKey(hash, normalizeSecret(secret))
   return new Uint8Array(await crypto.subtle.sign('HMAC', cryptoKey, message))
 }
 
@@ -79,7 +100,7 @@ export function normalizePeriod(period: unknown): number {
  * @throws 密钥无效或浏览器加密接口失败时抛出错误。
  */
 export async function generateOtp({ secret, algorithm = 'SHA1', digits = DEFAULT_DIGITS, counter = 0, encoding = 'standard' }: OtpAccount): Promise<string> {
-  const digest = await hmac(algorithm, base32Decode(secret), counterBytes(counter))
+  const digest = await hmac(algorithm, secret, counterBytes(counter))
   const value = truncate(digest)
   if (encoding === 'steam') {
     let remaining = value
@@ -140,6 +161,9 @@ export async function generateAccountCode(account: OtpAccount, timestamp: number
 export function formatCode(code: unknown, grouped: boolean = true): string {
   const text = String(code || '')
   if (!grouped || text.length < 6 || !/^\d+$/.test(text)) return text
+  // 这个函数在渲染期会被每张卡片反复调用，别每次都编译一个新正则。
   const size = text.length % 3 === 0 ? 3 : Math.ceil(text.length / 2)
-  return text.replace(new RegExp(`.{1,${size}}`, 'g'), '$& ').trim()
+  const parts = []
+  for (let index = 0; index < text.length; index += size) parts.push(text.slice(index, index + size))
+  return parts.join(' ')
 }

@@ -80,3 +80,27 @@ test('验证码按位数分组显示', () => {
   assert.equal(formatCode('123456', false), '123456')
   assert.equal(formatCode('2K9FH'), '2K9FH', 'Steam 码不分组')
 })
+
+// 密钥导入的 CryptoKey 现在按「算法 + 密钥」缓存，验证缓存不会串味、也不会缓存失败。
+test('重复算同一个密钥结果一致，换算法不会复用错的 key', async () => {
+  const first = await generateOtp({ secret: SHA1_SEED, counter: 1 })
+  const again = await generateOtp({ secret: SHA1_SEED, counter: 1 })
+  assert.equal(again, first, '命中缓存后结果必须和第一次一样')
+
+  const sha256 = await generateOtp({ secret: SHA1_SEED, algorithm: 'SHA256', counter: 1, digits: 8 })
+  const sha1 = await generateOtp({ secret: SHA1_SEED, algorithm: 'SHA1', counter: 1, digits: 8 })
+  assert.notEqual(sha256, sha1, '同一密钥换算法必须重新导入 key')
+})
+
+test('无效密钥每次都报错，不会被缓存成永久失败', async () => {
+  await assert.rejects(generateOtp({ secret: 'A1B2', counter: 0 }), /A-Z 和 2-7/)
+  await assert.rejects(generateOtp({ secret: 'A1B2', counter: 0 }), /A-Z 和 2-7/)
+  // 同一轮里换成合法密钥要能立刻算出来。
+  assert.equal((await generateOtp({ secret: SHA1_SEED, counter: 0 })).length, 6)
+})
+
+test('大写、小写、带空格的同一个密钥算出同一个码', async () => {
+  const canonical = await generateOtp({ secret: 'JBSWY3DPEHPK3PXP', counter: 7 })
+  assert.equal(await generateOtp({ secret: 'jbswy3dpehpk3pxp', counter: 7 }), canonical)
+  assert.equal(await generateOtp({ secret: 'JBSW Y3DP-EHPK 3PXP==', counter: 7 }), canonical)
+})
