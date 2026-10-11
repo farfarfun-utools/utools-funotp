@@ -24,6 +24,13 @@ export interface Account {
   deletedAt?: unknown
 }
 
+// Account 描述的是手填、扫码、导入这些还没落库的半成品；
+// 存进状态的账号都过了 normalizeAccount 和 migrateState 的筛，id 和密钥必然齐全，算码和拖动排序才敢直接用。
+export interface StoredAccount extends Account {
+  id: string
+  secret: string
+}
+
 export interface Group { id: string, name: string }
 export interface BackupState { version: number, groups: Group[], accounts: Account[], [key: string]: unknown }
 
@@ -107,10 +114,10 @@ export function createId(prefix: string = 'id'): string {
 // 把任意来源（手填、扫码、导入、备份）的账号补成完整、可直接算码的形状。
 /** 将任意来源的账号数据补全为可使用的形状。
  * @param input 待规范化的账号数据。
- * @returns 规范化后的账号。
+ * @returns 规范化后的账号，密钥一定是字符串，入参带上 id 时结果也带 id。
  */
-export function normalizeAccount(input: Account): Account {
-  const account = { ...input }
+export function normalizeAccount<T extends Account>(input: T): T & Account & { secret: string } {
+  const account: Account = { ...input }
   account.secret = normalizeSecret(account.secret)
   account.type = account.type === 'hotp' ? 'hotp' : 'totp'
   account.issuer = String(account.issuer || '').trim()
@@ -127,7 +134,8 @@ export function normalizeAccount(input: Account): Account {
   account.quick = Boolean(account.quick)
   account.note = String(account.note || '')
   account.deletedAt = account.deletedAt || null
-  return account
+  // 上面逐个字段补过一遍，入参的键都还在，secret 也一定是字符串了。
+  return account as T & Account & { secret: string }
 }
 
 // 同一个密钥 + 同一个账号名视为同一条，导入时用它去重。

@@ -22,7 +22,7 @@ function setPanelHeight(height: number = PANEL_HEIGHT) {
   resize?.call(utools, height)
 }
 
-export function useFunOtp() {
+function createFunOtp() {
   const loaded = loadState({ read: readStorage })
   const state = ref(loaded.state)
   const storageError = ref(loaded.blocked)
@@ -541,4 +541,11 @@ export function useFunOtp() {
     reorderAccounts, setView, groupCount, addGroup, groupAction, cycleTheme, saveSettings,
     exportBackup, exportUris, importAccounts, processDataFile, setupUtools, showToast, refreshCodes,
   }
+}
+
+/** 创建 FunOTP 的响应式界面状态及账号、分组和导入导出操作。
+ * @returns 供应用界面绑定的状态、计算属性和操作函数。
+ */
+export function useFunOtp(): ReturnType<typeof createFunOtp> {
+  return createFunOtp()
 }

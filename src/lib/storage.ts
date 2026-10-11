@@ -4,7 +4,7 @@ function db() {
   return window.utools?.dbStorage || null
 }
 
-function readLocal(key, fallback) {
+function readLocal<T>(key: string, fallback: T | null): T | null {
   try {
     const raw = localStorage.getItem(key)
     return raw == null ? fallback : JSON.parse(raw)
@@ -13,11 +13,16 @@ function readLocal(key, fallback) {
   }
 }
 
-export function readStorage(key, fallback = null) {
+/** 从 uTools 数据库或浏览器本地存储读取数据，并迁移旧的 localStorage 数据。
+ * @param key 存储键名。
+ * @param fallback 未找到或读取失败时返回的值。
+ * @returns 已读取的数据或后备值。
+ */
+export function readStorage<T>(key: string, fallback: T | null = null): T | null {
   const store = db()
   if (!store) return readLocal(key, fallback)
   const value = store.getItem(key)
-  if (value != null) return value
+  if (value != null) return value as T
   const legacy = readLocal(key, null)
   if (legacy == null) return fallback
   store.setItem(key, legacy)
@@ -29,7 +34,13 @@ export function readStorage(key, fallback = null) {
 // 超了 setItem 会直接抛错，提前拦一下才能给出用户看得懂的提示。
 const MAX_DOC_BYTES = 1024 * 1024
 
-export function writeStorage(key, value) {
+/** 将可序列化数据写入 uTools 数据库或浏览器本地存储。
+ * @param key 存储键名。
+ * @param value 要保存的可序列化数据。
+ * @returns 无返回值。
+ * @throws 数据无法 JSON 序列化，或超出 uTools 单条数据 1MB 上限时抛出错误。
+ */
+export function writeStorage(key: string, value: unknown): void {
   // dbStorage 不接受 Vue 的响应式代理，序列化一次既摊平成纯数据又能量出体积。
   const text = JSON.stringify(value)
   const bytes = new TextEncoder().encode(text).length

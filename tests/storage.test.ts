@@ -89,3 +89,12 @@ test('响应式代理会被序列化摊平，dbStorage 拿到的是纯数据', (
   assert.equal(Object.getPrototypeOf(stored), Object.prototype)
   assert.deepEqual(stored, { a: 1 })
 })
+
+test('循环引用这类无法序列化的数据直接抛错，不会写进半条数据', () => {
+  const dbStorage = fakeDbStorage()
+  Object.assign(globalThis, { window: { utools: { dbStorage } } })
+  const circular: { self?: unknown } = {}
+  circular.self = circular
+  assert.throws(() => writeStorage('k', circular))
+  assert.equal(dbStorage.map.has('k'), false)
+})
