@@ -270,6 +270,13 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 }
 .otp-card:hover { background: var(--card-hover); transform: translateY(-2px); box-shadow: 0 10px 18px -12px rgb(16 24 40 / 30%); }
 .otp-card:active { transform: translateY(0); }
+/* 卡片带 tabindex="-1" 来接焦点，默认描边换成和选中态一致的样式。 */
+.otp-card:focus { outline: 0; }
+.otp-card.active {
+  background: var(--card-hover);
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
 .otp-card.trashed { cursor: default; opacity: .7; }
 .otp-card.trashed:hover { transform: none; }
 
@@ -288,7 +295,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   font-weight: 500;
   letter-spacing: .3px;
 }
-.otp-avatar img { width: 100%; height: 100%; display: block; object-fit: cover; }
 
 .otp-body { min-width: 0; flex: 1 1 auto; }
 .otp-heading { display: flex; align-items: center; gap: 5px; }
@@ -336,7 +342,19 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .otp-ring { position: absolute; inset: 0; width: 34px; height: 34px; transform: rotate(-90deg); }
 .otp-ring circle { fill: none; stroke-width: 2.5; }
 .otp-ring-track { stroke: var(--ring-track); }
-.otp-ring-value { stroke: var(--primary); stroke-linecap: round; transition: stroke-dashoffset .25s linear, stroke .3s; }
+/* 倒计时圆环交给 CSS 跑：以前靠每 250ms 更新 stroke-dashoffset，
+   等于每秒把整个卡片墙重渲染四次。负的 animation-delay 把动画直接定位到当前周期的进度上。 */
+.otp-ring-value {
+  stroke: var(--primary);
+  stroke-linecap: round;
+  transition: stroke .3s;
+  animation: otp-ring-sweep var(--ring-duration, 30s) linear infinite;
+  animation-delay: var(--ring-delay, 0s);
+}
+@keyframes otp-ring-sweep {
+  from { stroke-dashoffset: 0; }
+  to { stroke-dashoffset: var(--ring-circumference, 81.68); }
+}
 .otp-card.expiring .otp-ring-value { stroke: var(--danger); }
 .otp-seconds { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .otp-card.expiring .otp-seconds { color: var(--danger); }
@@ -351,7 +369,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   opacity: 0;
   transition: opacity .15s;
 }
-.otp-card:hover .otp-actions { opacity: 1; }
+/* 这两个按钮是真正的 button，Tab 能走到。只按 :hover 显示的话，
+   键盘用户会停在一个看不见的控件上，所以 :focus-within 也要露出来。 */
+.otp-card:hover .otp-actions,
+.otp-card:focus-within .otp-actions { opacity: 1; }
 .otp-card.trashed .otp-actions { display: none; }
 .otp-actions button { width: 22px; height: 22px; display: grid; place-items: center; border-radius: 6px; color: var(--muted); }
 .otp-actions button:hover { background: var(--primary-soft); color: var(--primary); }

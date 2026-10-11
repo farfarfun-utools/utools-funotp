@@ -1,12 +1,26 @@
-import { computed, onBeforeUnmount, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { accountKey, accountLabel, accountMatches, createId, moveItem, normalizeAccount } from '../lib/core'
 import { counterAt, formatCode, generateOtp, remainingSeconds } from '../lib/otp'
 import { buildOtpauthUri, parseOtpauthText } from '../lib/otpauth'
-import { STORAGE_KEY, loadState, prepareState } from '../lib/state'
+import { STORAGE_KEY, loadState, nextIndex, prepareState } from '../lib/state'
 import { readStorage, writeStorage } from '../lib/storage'
 
-// 界面每 250 毫秒对一次时间，倒计时圆环才走得顺，验证码也能在整点秒立刻翻新。
-const TICK_MS = 250
+// 倒计时圆环由 CSS 动画推进，JS 只需要每秒对一次时间来刷新秒数和验证码。
+// 起点对齐到整秒，周期边界一到就能立刻翻新。
+const TICK_MS = 1000
+const PANEL_HEIGHT = 558
+
+// localeCompare 每次调用都要解析一遍 locale，比较器复用一个就够。
+const collator = new Intl.Collator('zh-Hans-CN')
+
+// 旧版 uTools 把方法名拼成了 setExpendHeight，8.0 只认 setExpandHeight
+// （文档和 utools-api-types@8.0.0 里都没有老拼写了，运行时是否还留着别名没说）。
+// 两个名字都认一遍：只带可选链调一个名字的话，一旦对不上就会把插件压成一条缝。
+function setPanelHeight(height: number = PANEL_HEIGHT) {
+  const utools = window.utools
+  const resize = utools?.setExpandHeight || utools?.setExpendHeight
+  resize?.call(utools, height)
+}
 
 export function useFunOtp() {
   const loaded = loadState({ read: readStorage })
@@ -16,8 +30,13 @@ export function useFunOtp() {
   const now = ref(Date.now())
   const toast = reactive({ visible: false, message: '', error: false })
   const codes = reactive({})
+  const ringSync = ref(0)
   let toastTimer
-  let refreshing = false
+  let timer: ReturnType<typeof setInterval> | undefined
+  let alignTimer: ReturnType<typeof setTimeout> | undefined
+  let viewSaveTimer: ReturnType<typeof setTimeout> | undefined
+  let refreshChain = Promise.resolve()
+  let queued = false
 
   const groups = computed(() => state.value.groups)
   const activeGroupId = computed(() => state.value.currentView.startsWith('group:') ? state.value.currentView.slice(6) : '')
@@ -39,13 +58,65 @@ export function useFunOtp() {
     return matched.slice().sort((a, b) => {
       const left = sort === 'issuer' ? `${a.issuer}${a.name}` : `${a.name}${a.issuer}`
       const right = sort === 'issuer' ? `${b.issuer}${b.name}` : `${b.name}${b.issuer}`
-      return left.localeCompare(right, 'zh-Hans-CN')
+      return collator.compare(left, right)
     })
   })
 
+  // 方向键选中的卡片下标，-1 表示没有显式选中。
+  // 搜索词或分组一变，列表内容就整个换了，原来的下标指向的已经不是同一张卡片。
+  const activeIndex = ref(-1)
+  watch([search, () => state.value.currentView], () => { activeIndex.value = -1 })
+
+  const activeAccount = computed(() => currentAccounts.value[activeIndex.value] || null)
+
+  function moveSelection(delta) {
+    activeIndex.value = nextIndex(activeIndex.value, delta, currentAccounts.value.length)
+  }
+
+  function selectIndex(index) {
+    const total = currentAccounts.value.length
+    activeIndex.value = total ? Math.min(Math.max(index, 0), total - 1) : -1
+  }
+
+  function clearSelection() {
+    activeIndex.value = -1
+  }
+
+  // 回车作用在哪张卡片上：优先用方向键显式选中的那张；
+  // 没选中时只有开了「回车复制第一个结果」才拿第一张，免得手一抖把不想要的码塞进剪贴板。
+  function enterTarget() {
+    if (activeAccount.value) return activeAccount.value
+    if (!state.value.settings.copy.copyOnEnter) return null
+    return currentAccounts.value[0] || null
+  }
+
+  // 写失败（超出 dbStorage 单文档上限、磁盘异常）必须让用户看见，
+  // 否则改动只留在内存里，下次进插件就全没了。
   function saveState() {
     if (storageError.value) return
-    writeStorage(STORAGE_KEY, state.value)
+    try {
+      writeStorage(STORAGE_KEY, state.value)
+    } catch (error) {
+      showToast(`保存失败：${error.message}`, true)
+    }
+  }
+
+  // 只给纯界面状态用（当前分组之类）：点一下导航就整条写一次库没必要，丢了也不影响密钥。
+  // 账号本身的改动一律立刻落盘，不进这个队列。
+  function saveViewSoon() {
+    clearTimeout(viewSaveTimer)
+    viewSaveTimer = setTimeout(() => {
+      viewSaveTimer = undefined
+      saveState()
+    }, 400)
+  }
+
+  // 插件退出时无条件落一次盘：除了还没到期的防抖写入，设置抽屉也是直接改 state.settings、
+  // 等关闭时才保存的，用户改完设置就把插件收起来的话，不写这一次就白改了。
+  function flushSaves() {
+    clearTimeout(viewSaveTimer)
+    viewSaveTimer = undefined
+    saveState()
   }
 
   function showToast(message, error = false) {
@@ -59,28 +130,42 @@ export function useFunOtp() {
   }
 
   // 验证码只在计数器翻页时重算，其余 tick 只是走一下倒计时。
-  async function refreshCodes() {
-    if (refreshing) return
-    refreshing = true
-    try {
-      for (const account of state.value.accounts) {
-        if (account.deletedAt) continue
-        const counter = counterOf(account)
-        const cached = codes[account.id]
-        if (cached && cached.counter === counter && cached.signature === signatureOf(account)) continue
-        try {
-          const [code, next] = await Promise.all([
-            generateOtp({ ...account, counter }),
-            generateOtp({ ...account, counter: counter + 1 }),
-          ])
-          codes[account.id] = { code, next, counter, signature: signatureOf(account), error: '' }
-        } catch (error) {
-          codes[account.id] = { code: '', next: '', counter, signature: signatureOf(account), error: error.message }
-        }
+  async function computeCodes() {
+    for (const account of state.value.accounts) {
+      if (account.deletedAt) continue
+      const counter = counterOf(account)
+      const cached = codes[account.id]
+      if (cached && cached.counter === counter && cached.signature === signatureOf(account)) continue
+      try {
+        const [code, next] = await Promise.all([
+          generateOtp({ ...account, counter }),
+          generateOtp({ ...account, counter: counter + 1 }),
+        ])
+        codes[account.id] = { code, next, counter, signature: signatureOf(account), error: '' }
+      } catch (error) {
+        codes[account.id] = { code: '', next: '', counter, signature: signatureOf(account), error: error.message }
       }
-    } finally {
-      refreshing = false
     }
+  }
+
+  // 排队而不是直接丢弃：之前「正在算就 return」会让 await refreshCodes() 立刻拿到旧码，
+  // 从 uTools 关键字复制时就会复制到上一个周期的验证码。
+  // 最多一轮在算、一轮在排队，定时器高频调用也不会把队列堆起来。
+  function refreshCodes() {
+    if (!queued) {
+      queued = true
+      refreshChain = refreshChain.then(() => {
+        queued = false
+        return computeCodes()
+      })
+    }
+    return refreshChain
+  }
+
+  // 后台被唤起（主搜索推送、关键字复制）时定时器是停着的，得先把时间对上再算码。
+  function tick() {
+    now.value = Date.now()
+    return refreshCodes()
   }
 
   // 改了密钥、位数或算法都要重算，光看计数器会一直用旧值。
@@ -109,21 +194,23 @@ export function useFunOtp() {
     return account.type === 'hotp' ? 0 : remainingSeconds(now.value, account.period)
   }
 
-  function progressOf(account) {
-    if (account.type === 'hotp') return 1
-    const period = Number(account.period) || 30
-    return Math.max(0, Math.min(1, secondsLeft(account) / period))
-  }
-
   function copyText(text) {
     if (window.utools?.copyText) window.utools.copyText(text)
     else navigator.clipboard?.writeText(text)
   }
 
-  function copyCode(account) {
+  // 三条复制路径（卡片点击、uTools 关键字、主搜索推送）都走这里。
+  // 少一处检查就会把空串塞进剪贴板，少一次自增就会让 HOTP 一直复制同一个已失效的码。
+  function copyAccountCode(account, { notify = true } = {}) {
     const entry = codeOf(account)
-    if (entry.error) return showToast(`「${accountLabel(account)}」密钥无效`, true)
-    if (!entry.code) return
+    if (entry.error) {
+      if (notify) showToast(`「${accountLabel(account)}」密钥无效`, true)
+      return false
+    }
+    if (!entry.code) {
+      if (notify) showToast('验证码还没算出来，请稍等', true)
+      return false
+    }
     copyText(entry.code)
     // HOTP 用一次就该往前走一格，否则下次还是同一个码。
     if (account.type === 'hotp') {
@@ -131,6 +218,11 @@ export function useFunOtp() {
       saveState()
       refreshCodes()
     }
+    return true
+  }
+
+  function copyCode(account) {
+    if (!copyAccountCode(account)) return
     if (state.value.settings.copy.outPlugin && window.utools?.outPlugin) {
       // outPlugin 只退出插件视图，uTools 主搜索框还会弹出来，得先隐藏主窗口才算彻底关掉。
       window.utools?.hideMainWindow?.()
@@ -168,6 +260,20 @@ export function useFunOtp() {
       mainHide: true,
       cmds: [accountLabel(account), account.issuer || account.name].filter(Boolean),
     })
+  }
+
+  // 从备份还原、或在插件没运行时清空废纸篓，都会留下指向已不存在账号的动态功能。
+  // 这些关键字留在 uTools 里按了只会无声失败，启动时按账号表对一遍账。
+  function pruneQuickFeatures() {
+    const utools = window.utools
+    if (!utools?.getFeatures) return
+    const alive = new Set(state.value.accounts
+      .filter(account => account.quick && !account.deletedAt)
+      .map(account => `copy-otp@${account.id}`))
+    for (const feature of utools.getFeatures() || []) {
+      const code = feature?.code
+      if (code?.startsWith('copy-otp@') && !alive.has(code)) utools.removeFeature?.(code)
+    }
   }
 
   function toggleQuick(account) {
@@ -219,9 +325,8 @@ export function useFunOtp() {
 
   function setView(view) {
     state.value.currentView = view
-    if (view.startsWith('group:')) state.value.lastGroupId = view.slice(6)
     search.value = ''
-    saveState()
+    saveViewSoon()
   }
 
   function groupCount(groupId) {
@@ -324,6 +429,9 @@ export function useFunOtp() {
         saveState()
         applyTheme()
         refreshCodes()
+        // 账号表整体换掉了：重新注册备份里标了关键字的账号，并清掉指向旧账号的残留。
+        state.value.accounts.forEach(syncQuickFeature)
+        pruneQuickFeatures()
         showToast(dropped ? `备份已恢复，跳过 ${dropped} 条无效账号` : '备份已恢复')
         return true
       }
@@ -340,17 +448,23 @@ export function useFunOtp() {
   }
 
   function setupUtools({ addAccount }) {
-    window.utools?.setExpendHeight?.(558)
+    setPanelHeight()
     window.utools?.setSubInput?.(({ text }) => { search.value = text || '' }, '搜索账号', true)
     state.value.accounts.forEach(syncQuickFeature)
+    pruneQuickFeatures()
+
+    // outPlugin 不传 isKill 时插件只是隐藏到后台、进程还在跑，定时器不停就是白烧 CPU。
+    window.utools?.onPluginOut?.(() => stopTicking())
 
     window.funotp?.onEnter(async action => {
-      window.utools?.setExpendHeight?.(558)
+      setPanelHeight()
+      startTicking()
       if (action.code?.startsWith('copy-otp@')) {
         const account = state.value.accounts.find(item => item.id === action.code.slice(9))
         if (!account) return
-        await refreshCodes()
-        copyText(codeOf(account).code)
+        await tick()
+        // 这条路径上界面是隐藏的，复制失败就把窗口拉回来让用户看到提示，而不是静默退出。
+        if (!copyAccountCode(account)) return void window.utools?.showMainWindow?.()
         window.utools?.hideMainWindow?.()
         window.utools?.outPlugin?.()
         return
@@ -361,39 +475,68 @@ export function useFunOtp() {
         else if (accounts.length > 1) showToast(`已导入 ${importAccounts(accounts).length} 个账号`)
         return
       }
-      if (action.code === 'search-otp') search.value = String(action.payload || '')
+      if (action.code === 'search-otp') {
+        const keyword = String(action.payload || '')
+        search.value = keyword
+        // 卡片已经按关键字过滤了，子输入框却还是空的：用户再敲一个字，onChange 回来的
+        // 就只有那一个字，整个关键字被悄悄换掉。把关键字回填进去，接着改才是接着改。
+        window.utools?.setSubInputValue?.(keyword)
+      }
     })
 
-    window.utools?.onMainPush?.(({ payload }) => state.value.accounts
-      .filter(account => !account.deletedAt && accountMatches(account, payload, state.value.settings.search))
-      .slice(0, 8)
-      .map(account => ({
-        icon: 'logo.png',
-        text: formatCode(codeOf(account).code, true) || '计算中…',
-        title: accountLabel(account),
-        accountId: account.id,
-      })),
-    async ({ option }) => {
-      const account = state.value.accounts.find(item => item.id === option.accountId)
-      if (!account) return
-      await refreshCodes()
-      copyText(codeOf(account).code)
-      return true
+    window.utools?.onMainPush?.(({ payload }) => {
+      // 插件刚被后台唤起时定时器是停着的，这里补一次对时和算码，下一次按键就能显示出来。
+      tick()
+      return state.value.accounts
+        .filter(account => !account.deletedAt && accountMatches(account, payload, state.value.settings.search))
+        .slice(0, 8)
+        .map(account => ({
+          icon: 'logo.png',
+          text: formatCode(codeOf(account).code, true) || '计算中…',
+          title: accountLabel(account),
+          accountId: account.id,
+        }))
+    },
+    // onSelect 必须同步返回 boolean：写成 async 返回的是 Promise，uTools 判断不出该不该进插件，
+    // 而且复制会发生在回调返回之后。返回 false = 复制完留在主搜索框，不进插件界面。
+    ({ option }) => {
+      const account = state.value.accounts.find(item => item.id === option?.accountId)
+      if (!account) return false
+      if (!copyAccountCode(account)) return true
+      window.utools?.hideMainWindow?.()
+      return false
     })
   }
 
-  const timer = setInterval(() => {
-    now.value = Date.now()
-    refreshCodes()
-  }, TICK_MS)
-  onBeforeUnmount(() => clearInterval(timer))
+  function startTicking() {
+    if (timer || alignTimer) return
+    tick()
+    // 圆环要按当前时钟重新对齐：插件可能在后台停了很久，机器也可能睡过一觉。
+    ringSync.value += 1
+    alignTimer = setTimeout(() => {
+      alignTimer = undefined
+      tick()
+      timer = setInterval(tick, TICK_MS)
+    }, TICK_MS - Date.now() % TICK_MS)
+  }
+
+  function stopTicking() {
+    clearTimeout(alignTimer)
+    clearInterval(timer)
+    alignTimer = undefined
+    timer = undefined
+    flushSaves()
+  }
+
+  onBeforeUnmount(stopTicking)
 
   applyTheme()
-  refreshCodes()
+  startTicking()
 
   return {
-    state, search, now, toast, storageError, codes, groups, activeGroupId, trashCount, currentAccounts,
-    codeOf, displayCode, displayNext, secondsLeft, progressOf, copyCode, copyText,
+    state, search, now, toast, storageError, codes, groups, activeGroupId, trashCount, currentAccounts, ringSync,
+    activeAccount, moveSelection, selectIndex, clearSelection, enterTarget,
+    codeOf, displayCode, displayNext, secondsLeft, copyCode, copyText,
     saveAccount, toggleFavorite, toggleQuick, moveToTrash, restoreAccount, deleteAccount, emptyTrash,
     reorderAccounts, setView, groupCount, addGroup, groupAction, cycleTheme, saveSettings,
     exportBackup, exportUris, importAccounts, processDataFile, setupUtools, showToast, refreshCodes,

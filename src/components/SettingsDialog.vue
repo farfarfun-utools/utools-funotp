@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { reactive, ref } from 'vue'
+import type { PropType } from 'vue'
+import type { Group } from '../lib/core'
 import { readStorage, writeStorage } from '../lib/storage'
 
 const props = defineProps({
   settings: { type: Object, required: true },
-  groups: { type: Array, default: () => [] },
+  groups: { type: Array as PropType<Group[]>, default: () => [] },
   accountCount: { type: Number, default: 0 },
   backupData: { type: Object, default: null },
 })
@@ -89,7 +91,7 @@ async function webdavAction(action) {
         const href = value('href')
         if (!decodeURIComponent(href).endsWith('.json')) return []
         return [{ href, name: value('displayname') || decodeURIComponent(href.split('/').pop()), size: Number(value('getcontentlength') || 0), modified: value('getlastmodified') }]
-      }).sort((a, b) => new Date(b.modified) - new Date(a.modified))
+      }).sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime())
       webdavListDialog.value.showModal()
     }
   } catch (error) {
@@ -130,8 +132,10 @@ defineExpose({ open, close })
 
     <div class="settings-body">
       <div class="settings-tabs" role="tablist">
-        <button v-for="tab in [['display', '显示'], ['data', '数据'], ['about', '关于']]" :key="tab[0]"
-          type="button" role="tab" :aria-selected="activeTab === tab[0]" :class="{ active: activeTab === tab[0] }" @click="activeTab = tab[0]">
+        <button
+          v-for="tab in [['display', '显示'], ['data', '数据'], ['about', '关于']]" :key="tab[0]"
+          type="button" role="tab" :aria-selected="activeTab === tab[0]" :class="{ active: activeTab === tab[0] }" @click="activeTab = tab[0]"
+        >
           {{ tab[1] }}
         </button>
       </div>
@@ -174,6 +178,17 @@ defineExpose({ open, close })
             <input v-model="settings.copy.outPlugin" type="checkbox" />
             <span class="switch-control" aria-hidden="true" />
             <span>{{ settings.copy.outPlugin ? '自动退出插件（可直接粘贴）' : '留在插件里并提示' }}</span>
+          </label>
+        </section>
+
+        <div class="settings-divider" />
+        <section class="setting-field">
+          <h3>键盘</h3>
+          <p class="data-help">点一下插件界面把焦点交给它之后，方向键选中卡片、回车复制。</p>
+          <label class="switch-line">
+            <input v-model="settings.copy.copyOnEnter" type="checkbox" />
+            <span class="switch-control" aria-hidden="true" />
+            <span>没有选中卡片时，回车直接复制第一个</span>
           </label>
         </section>
 
@@ -248,8 +263,9 @@ defineExpose({ open, close })
         <h3>FunOTP</h3>
         <p>本地两步验证码管理器，兼容 Google Authenticator、Microsoft Authenticator、Authy 等使用的 TOTP / HOTP 标准。</p>
         <ul class="about-list">
-          <li>验证码全部在本机离线计算，密钥不联网、不上传。</li>
-          <li>数据存在 uTools 本地数据库中，卸载插件会一并删除，请提前备份。</li>
+          <li>验证码全部在本机离线计算，插件自身不会把密钥发给任何第三方服务。</li>
+          <li>密钥存在 uTools 的数据库里。<b class="danger-text">若你在 uTools 中开启了数据同步，密钥会随 uTools 账号同步到云端并下发到你的其他设备。</b>介意的话请关闭 uTools 数据同步。</li>
+          <li>卸载插件会一并删除数据，请提前备份。</li>
           <li>删除账号前请确认该网站已关闭两步验证，或已保存好恢复码。</li>
         </ul>
       </div>

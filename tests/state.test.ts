@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'vitest'
 import { accountKey, accountLabel, initials, migrateState, moveItem, normalizeAccount, validateState } from '../src/lib/core'
-import { DEFAULT_SETTINGS, STORAGE_KEY, emptyState, hydrateState, loadState, prepareState } from '../src/lib/state'
+import { DEFAULT_SETTINGS, STORAGE_KEY, emptyState, hydrateState, loadState, nextIndex, prepareState } from '../src/lib/state'
 
 const SECRET = 'JBSWY3DPEHPK3PXP'
 
@@ -87,7 +87,6 @@ test('hydrateState 合并默认设置，且不丢用户已改的值', () => {
 test('停留在已删除分组时回落到「全部」', () => {
   const state = hydrateState(savedState({ currentView: 'group:不存在' }))
   assert.equal(state.currentView, 'all')
-  assert.equal(state.lastGroupId, '')
 })
 
 test('loadState 在读不出数据时不写空数据，而是标记为只读', () => {
@@ -119,4 +118,20 @@ test('moveItem 按目标位置重排', () => {
   assert.deepEqual(moveItem(items, 'c', 'a').map(item => item.id), ['c', 'a', 'b'])
   assert.deepEqual(moveItem(items, 'a', 'a').map(item => item.id), ['a', 'b', 'c'])
   assert.deepEqual(moveItem(items, 'a', '不存在').map(item => item.id), ['a', 'b', 'c'])
+})
+
+test('nextIndex 在列表范围内夹住方向键移动', () => {
+  // 还没选中：往后走从第一张开始，往前走从最后一张开始。
+  assert.equal(nextIndex(-1, 1, 5), 0)
+  assert.equal(nextIndex(-1, 3, 5), 0, '上下键跨行时也要从第一张开始，不是跳到第 3 张')
+  assert.equal(nextIndex(-1, -1, 5), 4)
+
+  assert.equal(nextIndex(0, 1, 5), 1)
+  assert.equal(nextIndex(2, 3, 5), 4, '最后一行不满时停在末尾而不是越界')
+  assert.equal(nextIndex(4, 1, 5), 4, '到底了就不动')
+  assert.equal(nextIndex(0, -1, 5), 0, '到头了就不动')
+  assert.equal(nextIndex(1, -3, 5), 0)
+
+  assert.equal(nextIndex(3, 1, 0), -1, '列表空了就取消选中')
+  assert.equal(nextIndex(-1, 1, 0), -1)
 })

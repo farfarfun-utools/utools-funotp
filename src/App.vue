@@ -13,6 +13,7 @@ import { accountLabel } from './lib/core'
 const otp = useFunOtp()
 const { state, storageError, toast, groups, activeGroupId, trashCount, currentAccounts } = otp
 
+const accountGrid = ref(null)
 const accountDialog = ref(null)
 const groupDialog = ref(null)
 const qrDialog = ref(null)
@@ -105,8 +106,39 @@ function copyUri(uri) {
   otp.showToast('链接已复制，请尽快粘贴并清空剪贴板')
 }
 
+// 卡片原来只能用鼠标点。方向键选中、回车复制，列表长了也不用找鼠标。
+// 注意：uTools 的子输入框属于主窗口，插件页面是挂在它上面的另一个 BrowserView，
+// 在子输入框里打字的按键到不了这里（uTools 8.0 也没有任何子输入框的按键回调，
+// 它给的是 subInputBlur()：主动把焦点让给插件页面）。
+// 所以这套快捷键要先让焦点落进插件界面——点一下界面即可。
+// 搜完直接回车复制走的是另一条路：主搜索框里的 onMainPush / onSelect。
 function handleKeydown(event) {
-  if (event.key === 'Escape') closeContextMenu()
+  if (event.key === 'Escape') {
+    closeContextMenu()
+    otp.clearSelection()
+    return
+  }
+  // 弹窗是 modal，里面还有输入框和按钮，别把它们的方向键和回车抢走。
+  const tag = event.target?.tagName
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+  if (context.visible || document.querySelector('dialog[open]')) return
+
+  const columns = accountGrid.value?.columnCount() || 1
+  const step = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: columns, ArrowUp: -columns }[event.key]
+  if (step) {
+    event.preventDefault()
+    return otp.moveSelection(step)
+  }
+  if (event.key === 'Home' || event.key === 'End') {
+    event.preventDefault()
+    return otp.selectIndex(event.key === 'Home' ? 0 : currentAccounts.value.length - 1)
+  }
+  if (event.key !== 'Enter') return
+  // 废纸篓里的账号只能恢复或彻底删除，复制已删除账号的验证码没有意义。
+  const account = trashView.value ? null : otp.enterTarget()
+  if (!account) return
+  event.preventDefault()
+  otp.copyCode(account)
 }
 
 onMounted(() => {
@@ -152,9 +184,11 @@ onBeforeUnmount(() => {
         </div>
 
         <AccountGrid
+          ref="accountGrid"
           :accounts="currentAccounts"
           :otp="otp"
           :columns="state.settings.display.columns"
+          :active-id="otp.activeAccount.value?.id || ''"
           :show-next="state.settings.display.showNext"
           :trash-view="trashView"
           :show-add="!trashView && !otp.search.value.trim()"
