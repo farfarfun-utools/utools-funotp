@@ -71,7 +71,7 @@ function hmacKey(hash: string, secret: string): Promise<CryptoKey> {
 }
 
 async function hmac(algorithm: string, secret: string, message: Uint8Array<ArrayBuffer>) {
-  const hash = ALGORITHMS[algorithm] || ALGORITHMS.SHA1
+  const hash = ALGORITHMS[algorithm as keyof typeof ALGORITHMS] || ALGORITHMS.SHA1
   const cryptoKey = await hmacKey(hash, normalizeSecret(secret))
   return new Uint8Array(await crypto.subtle.sign('HMAC', cryptoKey, message))
 }
@@ -136,23 +136,20 @@ export function remainingSeconds(timestamp: number, period: unknown = DEFAULT_PE
 }
 
 // HOTP 的计数器存在账号上，TOTP 则由时间推出来。
-/** 为账号在给定时间生成验证码。
- * @param account 已规范化的 OTP 账号。
+// 负数要夹掉：counterBytes 里 BigInt 为负时循环条件 value > 0n 直接不成立，
+// 得到的是全零计数器，算出来的码跟任何验证器都对不上，而且一声不响。
+/** 取账号在给定时间应使用的计数器值。
+ * @param account OTP 账号。
  * @param timestamp Unix 时间戳（毫秒）。
- * @returns 生成的验证码。
+ * @returns 计数器值。
  */
-export async function generateAccountCode(account: OtpAccount, timestamp: number = Date.now()): Promise<string> {
-  const counter = account.type === 'hotp' ? Number(account.counter) || 0 : counterAt(timestamp, account.period)
-  return generateOtp({
-    secret: account.secret,
-    algorithm: account.algorithm,
-    digits: account.digits,
-    encoding: account.encoding,
-    counter,
-  })
+export function counterFor(account: OtpAccount, timestamp: number = Date.now()): number {
+  return account.type === 'hotp' ? Math.max(0, Number(account.counter) || 0) : counterAt(timestamp, account.period)
 }
 
 // 显示成 123 456 / 1234 5678 比一长串数字好认。
+// 正则提到模块级：按规范每次求值都是一个新的 RegExp 对象，而这个函数在渲染期会被反复调用。
+const DIGITS_ONLY = /^\d+$/
 /** 将数字验证码按易读分组格式化。
  * @param code 原始验证码。
  * @param grouped 是否启用分组。
@@ -160,10 +157,9 @@ export async function generateAccountCode(account: OtpAccount, timestamp: number
  */
 export function formatCode(code: unknown, grouped: boolean = true): string {
   const text = String(code || '')
-  if (!grouped || text.length < 6 || !/^\d+$/.test(text)) return text
-  // 这个函数在渲染期会被每张卡片反复调用，别每次都编译一个新正则。
+  if (!grouped || text.length < 6 || !DIGITS_ONLY.test(text)) return text
   const size = text.length % 3 === 0 ? 3 : Math.ceil(text.length / 2)
-  const parts = []
+  const parts: string[] = []
   for (let index = 0; index < text.length; index += size) parts.push(text.slice(index, index + size))
   return parts.join(' ')
 }

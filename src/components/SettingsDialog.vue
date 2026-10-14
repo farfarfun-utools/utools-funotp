@@ -1,14 +1,17 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { reactive, ref, toRaw } from 'vue'
 import type { PropType } from 'vue'
-import type { Group } from '../lib/core'
+import type { ConfirmOptions, Group } from '../lib/core'
 import { readStorage, writeStorage } from '../lib/storage'
 
 const props = defineProps({
   settings: { type: Object, required: true },
   groups: { type: Array as PropType<Group[]>, default: () => [] },
   accountCount: { type: Number, default: 0 },
-  backupData: { type: Object, default: null },
+  // 备份内容由 useFunOtp 产出，这里不自己序列化一份——两条备份路径必须是同一份数据。
+  backupContent: { type: Function as PropType<() => string>, required: true },
+  // 删云端备份这种不可撤销的操作要先问一句，用的是和其他弹窗同一个确认框。
+  confirm: { type: Function as PropType<(options: ConfirmOptions) => Promise<boolean>>, required: true },
 })
 const emit = defineEmits(['save-settings', 'export', 'export-uris', 'data-file', 'message'])
 
@@ -42,7 +45,13 @@ function closeOnBackdrop(event) {
 // uTools 里走原生文件框；浏览器预览时回落到隐藏的 file input。
 function choose(type) {
   const extensions = type === 'restore' ? ['json'] : ['txt', 'json', 'text']
-  const content = window.funotp?.chooseTextFile?.(extensions)
+  let content
+  try {
+    content = window.funotp?.chooseTextFile?.(extensions)
+  } catch (error) {
+    // 读文件失败（权限、文件被占用）必须说出来，否则「从电脑还原」看起来就是点了没反应。
+    return emit('message', error.message, true)
+  }
   if (typeof content === 'string') emit('data-file', type, content, { groupId: importGroupId.value })
   else if (content === undefined) (type === 'restore' ? restoreInput : importInput).value?.click()
 }
@@ -60,38 +69,64 @@ function toggleSearch(field) {
   else search.push(field)
 }
 
+const EMPTY_WEBDAV = { host: '', username: '', password: '' }
+
+// preload 收到的必须是纯对象：Vue 的响应式代理过不了 Electron 的桥。
+function webdavConfig() {
+  return { ...toRaw(webdav) }
+}
+
 function openWebdav() {
-  Object.assign(webdav, readStorage('funotp-webdav', { host: '', username: '', password: '' }))
+  Object.assign(webdav, EMPTY_WEBDAV, readStorage('funotp-webdav', EMPTY_WEBDAV))
   webdavDialog.value.showModal()
 }
 
 function saveWebdav() {
-  writeStorage('funotp-webdav', webdav)
+  try {
+    writeStorage('funotp-webdav', webdavConfig())
+  } catch (error) {
+    // 整个 dbStorage 坏掉时这里也会抛，不接住的话配置看起来保存成功了，实际没落盘。
+    return emit('message', `WebDav 配置保存失败：${error.message}`, true)
+  }
   webdavDialog.value.close()
   emit('message', 'WebDav 配置已保存')
 }
 
+function parseWebdavList(xml) {
+  const parsed = new DOMParser().parseFromString(xml, 'application/xml')
+  // parseFromString 从不抛错，畸形响应会变成一棵带 parsererror 的树，不查就会静默显示「暂无数据」。
+  if (parsed.getElementsByTagName('parsererror').length) throw new Error('服务器返回的不是有效的 WebDav 响应')
+  // 网关的错误页也可能是合法 XML（`<!DOCTYPE html><title>502</title>` 这种），parsererror 查不出来。
+  // 根节点不是 multistatus 就不是 PROPFIND 的回应，照样得报错——否则「列不出文件」和「目录是空的」看起来一模一样。
+  if (parsed.documentElement?.localName !== 'multistatus') throw new Error('服务器返回的不是有效的 WebDav 响应')
+  return [...parsed.getElementsByTagNameNS('*', 'response')].flatMap(response => {
+    const value = name => response.getElementsByTagNameNS('*', name)[0]?.textContent || ''
+    const href = value('href')
+    if (!decodeURIComponent(href).endsWith('.json')) return []
+    // 服务器给的日期不一定能解析，解析不出来就按最旧处理，别让 NaN 把排序搅乱。
+    const modified = Date.parse(value('getlastmodified'))
+    return [{
+      href,
+      name: value('displayname') || decodeURIComponent(href.split('/').pop()),
+      size: Number(value('getcontentlength') || 0),
+      modifiedAt: Number.isNaN(modified) ? 0 : modified,
+    }]
+  }).sort((a, b) => b.modifiedAt - a.modifiedAt)
+}
+
 async function webdavAction(action) {
   if (!webdav.host || !webdav.username || !webdav.password) {
-    Object.assign(webdav, readStorage('funotp-webdav', webdav))
+    Object.assign(webdav, readStorage('funotp-webdav', webdavConfig()))
   }
   if (!webdav.host || !webdav.username || !webdav.password) return emit('message', '请先配置 WebDav', true)
   if (!window.funotp?.webdavBackup) return emit('message', '当前环境不支持 WebDav', true)
   webdavLoading.value = true
   try {
-    const config = JSON.parse(JSON.stringify(webdav))
     if (action === 'backup') {
-      await window.funotp.webdavBackup(config, JSON.stringify(props.backupData, null, 2))
+      await window.funotp.webdavBackup(webdavConfig(), props.backupContent())
       emit('message', '已备份到 WebDav')
     } else {
-      const xml = await window.funotp.webdavList(config)
-      const document = new DOMParser().parseFromString(xml, 'application/xml')
-      webdavFiles.value = [...document.getElementsByTagNameNS('*', 'response')].flatMap(response => {
-        const value = name => response.getElementsByTagNameNS('*', name)[0]?.textContent || ''
-        const href = value('href')
-        if (!decodeURIComponent(href).endsWith('.json')) return []
-        return [{ href, name: value('displayname') || decodeURIComponent(href.split('/').pop()), size: Number(value('getcontentlength') || 0), modified: value('getlastmodified') }]
-      }).sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime())
+      webdavFiles.value = parseWebdavList(await window.funotp.webdavList(webdavConfig()))
       webdavListDialog.value.showModal()
     }
   } catch (error) {
@@ -103,7 +138,7 @@ async function webdavAction(action) {
 
 async function restoreWebdav(file) {
   try {
-    emit('data-file', 'restore', await window.funotp.webdavRestore(JSON.parse(JSON.stringify(webdav)), file.href))
+    emit('data-file', 'restore', await window.funotp.webdavRestore(webdavConfig(), file.href))
     webdavListDialog.value.close()
   } catch (error) {
     emit('message', `还原失败：${error.message}`, true)
@@ -111,8 +146,15 @@ async function restoreWebdav(file) {
 }
 
 async function deleteWebdav(file) {
+  const ok = await props.confirm({
+    message: `删除云端备份「${file.name}」？`,
+    detail: 'WebDav 上的这个文件会被删掉，本地账号不受影响。',
+    confirmText: '删除备份',
+    danger: true,
+  })
+  if (!ok) return
   try {
-    await window.funotp.webdavDelete(JSON.parse(JSON.stringify(webdav)), file.href)
+    await window.funotp.webdavDelete(webdavConfig(), file.href)
     webdavFiles.value = webdavFiles.value.filter(item => item.href !== file.href)
     emit('message', '已删除')
   } catch (error) {
@@ -278,7 +320,8 @@ defineExpose({ open, close })
   <dialog ref="webdavDialog" class="sub-modal">
     <form method="dialog" @submit.prevent="saveWebdav">
       <header><h2>WebDav 配置</h2><button type="button" aria-label="关闭" @click="webdavDialog.close()">×</button></header>
-      <label><span>服务器</span><input v-model="webdav.host" placeholder="https://dav.example.com/dav/" required /></label>
+      <p class="data-help">备份是<b class="danger-text">明文密钥</b>，只支持 <b>https://</b> 地址，请使用可信的服务器。</p>
+      <label><span>服务器</span><input v-model="webdav.host" type="url" pattern="https://.*" placeholder="https://dav.example.com/dav/" required /></label>
       <label><span>用户名</span><input v-model="webdav.username" autocomplete="off" required /></label>
       <label><span>密 码</span><input v-model="webdav.password" type="password" autocomplete="off" required /></label>
       <footer><button type="button" class="button" @click="webdavDialog.close()">取消</button><button type="submit" class="button primary">保存</button></footer>

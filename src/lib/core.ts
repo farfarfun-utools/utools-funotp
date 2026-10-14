@@ -3,8 +3,12 @@ import { DEFAULT_DIGITS, DEFAULT_PERIOD, normalizeDigits, normalizePeriod } from
 
 export const COLORS = ['#16b8c7', '#2563eb', '#7c3aed', '#db2777', '#e85d3f', '#0f9f6e', '#f59e0b', '#64748b']
 
+// 可参与搜索的字段。DEFAULT_SETTINGS.search 也用这一份，免得两边各写一遍再慢慢漂移。
+export const SEARCH_FIELDS = ['name', 'issuer', 'note'] as const
+
+// 不留 [key: string]: unknown 的索引签名：有它的话 account.secrt 这种拼错也能编过，
+// 读出 undefined 之后一路静默走到「算不出验证码」。
 export interface Account {
-  [key: string]: unknown
   id?: string
   secret?: string
   type?: string
@@ -29,10 +33,35 @@ export interface Account {
 export interface StoredAccount extends Account {
   id: string
   secret: string
+  groupIds: string[]
 }
 
 export interface Group { id: string, name: string }
-export interface BackupState { version: number, groups: Group[], accounts: Account[], [key: string]: unknown }
+
+// 备份文件的形状。theme / currentView / settings 是上一次运行时顺手存进去的界面状态，
+// 老备份里可能没有，由 hydrateState 补齐，所以这里声明成可选的未知值。
+export interface BackupState {
+  version: number
+  groups: Group[]
+  accounts: Account[]
+  theme?: unknown
+  currentView?: unknown
+  settings?: unknown
+}
+
+// 卡片上验证码的展示形态：已经打码 / 分组 / 换成错误文案之后的样子。
+// 由 composable 统一算好，卡片只负责画出来——否则每秒的倒计时刷新都会把格式化重跑一遍。
+export interface CodeView { code: string, next: string, invalid: boolean }
+
+// 确认框的文案。放在这里是因为提问的是 composable、画出来的是组件，两边都要认这个形状。
+export interface ConfirmOptions {
+  message: string
+  /** 第二行小字，用来写清楚后果（密钥删了找不回之类）。 */
+  detail?: string
+  confirmText?: string
+  /** 确定按钮标红，用在不可撤销的操作上。 */
+  danger?: boolean
+}
 
 // 同一个服务商每次都落到同一种颜色，卡片墙看起来才稳定。
 /** 根据稳定的文本种子选择预设颜色。
@@ -82,12 +111,14 @@ export function accountLabel(account: Account): string {
  * @param fields 参与搜索的字段名。
  * @returns 匹配时为 `true`。
  */
-export function accountMatches(account: Account, keyword: unknown, fields: string[] = ['name', 'issuer', 'note']): boolean {
+export function accountMatches(account: Account, keyword: unknown, fields: readonly string[] = SEARCH_FIELDS): boolean {
   const query = String(keyword || '').trim().toLocaleLowerCase()
   if (!query) return true
-  return fields.map(field => account[field])
-    .filter(Boolean)
-    .some(value => String(value).toLocaleLowerCase().includes(query))
+  // some 而不是 map().filter().some()：命中第一个字段就不用再把其余字段都转成小写。
+  return fields.some(field => {
+    const value = account[field as keyof Account]
+    return Boolean(value) && String(value).toLocaleLowerCase().includes(query)
+  })
 }
 
 /** 去除无效和重复的分组标识。
@@ -116,7 +147,7 @@ export function createId(prefix: string = 'id'): string {
  * @param input 待规范化的账号数据。
  * @returns 规范化后的账号，密钥一定是字符串，入参带上 id 时结果也带 id。
  */
-export function normalizeAccount<T extends Account>(input: T): T & Account & { secret: string } {
+export function normalizeAccount<T extends Account>(input: T): T & Account & { secret: string, groupIds: string[] } {
   const account: Account = { ...input }
   account.secret = normalizeSecret(account.secret)
   account.type = account.type === 'hotp' ? 'hotp' : 'totp'
@@ -134,8 +165,8 @@ export function normalizeAccount<T extends Account>(input: T): T & Account & { s
   account.quick = Boolean(account.quick)
   account.note = String(account.note || '')
   account.deletedAt = account.deletedAt || null
-  // 上面逐个字段补过一遍，入参的键都还在，secret 也一定是字符串了。
-  return account as T & Account & { secret: string }
+  // 上面逐个字段补过一遍，入参的键都还在，secret 和 groupIds 也一定有了。
+  return account as T & Account & { secret: string, groupIds: string[] }
 }
 
 // 同一个密钥 + 同一个账号名视为同一条，导入时用它去重。

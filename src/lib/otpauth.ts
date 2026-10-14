@@ -11,7 +11,7 @@ function pickAlgorithm(value: unknown): OtpAlgorithm {
 }
 
 // 标签形如 "Issuer:account"，也可能只有账号名。冒号前后允许有空格。
-function splitLabel(label) {
+function splitLabel(label: unknown) {
   const text = String(label || '').trim()
   const index = text.indexOf(':')
   if (index < 0) return { issuer: '', name: text }
@@ -79,7 +79,7 @@ export function buildOtpauthUri(account: Account): string {
   return `otpauth://${account.type === 'hotp' ? 'hotp' : 'totp'}/${label}?${params}`
 }
 
-function readVarint(bytes, cursor) {
+function readVarint(bytes: Uint8Array, cursor: { index: number }) {
   let value = 0n
   let shift = 0n
   while (cursor.index < bytes.length) {
@@ -93,10 +93,17 @@ function readVarint(bytes, cursor) {
   throw new Error('迁移数据已损坏')
 }
 
+// protobuf 的一个字段：varint 落在 value 上，length-delimited 落在 bytes 上。
+interface WireField {
+  field: number
+  value?: bigint
+  bytes?: Uint8Array
+}
+
 // 只认 protobuf 的 varint 和 length-delimited 两种线格式，其余按固定长度跳过。
-function readFields(bytes) {
+function readFields(bytes: Uint8Array): WireField[] {
   const cursor = { index: 0 }
-  const fields = []
+  const fields: WireField[] = []
   while (cursor.index < bytes.length) {
     const key = Number(readVarint(bytes, cursor))
     const field = key >>> 3
@@ -114,15 +121,16 @@ function readFields(bytes) {
   return fields
 }
 
-function decodeBase64(value) {
+function decodeBase64(value: unknown) {
   const normalized = String(value).replace(/-/g, '+').replace(/_/g, '/')
   const padded = normalized + '='.repeat((4 - normalized.length % 4) % 4)
   const binary = atob(padded)
   return Uint8Array.from(binary, char => char.charCodeAt(0))
 }
 
-const MIGRATION_ALGORITHMS = { 1: 'SHA1', 2: 'SHA256', 3: 'SHA512' }
-const MIGRATION_DIGITS = { 1: 6, 2: 8 }
+// protobuf 里算法和位数是枚举下标，越界的值按默认值处理，所以这里按下标取。
+const MIGRATION_ALGORITHMS: Record<number, string> = { 1: 'SHA1', 2: 'SHA256', 3: 'SHA512' }
+const MIGRATION_DIGITS: Record<number, number> = { 1: 6, 2: 8 }
 
 // Google Authenticator「导出账号」生成的二维码，内容是 protobuf 打包后的 base64。
 /** 解析 Google Authenticator 迁移链接中的全部账号。
@@ -138,9 +146,10 @@ export function parseMigrationUri(uri: unknown): Account[] {
 
   const text = new TextDecoder()
   return readFields(decodeBase64(data))
-    .filter(entry => entry.field === 1 && entry.bytes)
+    .filter(entry => entry.field === 1)
     .flatMap(entry => {
-      const parameters = new Map()
+      if (!entry.bytes) return []
+      const parameters = new Map<number, WireField>()
       for (const item of readFields(entry.bytes)) parameters.set(item.field, item)
       const secret = parameters.get(1)?.bytes
       if (!secret?.length) return []
@@ -169,8 +178,8 @@ export function parseMigrationUri(uri: unknown): Account[] {
  */
 export function parseOtpauthText(text: unknown): { accounts: Account[], errors: string[] } {
   const matches = String(text || '').match(/otpauth(-migration)?:\/\/\S+/gi) || []
-  const accounts = []
-  const errors = []
+  const accounts: Account[] = []
+  const errors: string[] = []
   for (const uri of matches) {
     try {
       if (/^otpauth-migration:/i.test(uri)) accounts.push(...parseMigrationUri(uri))

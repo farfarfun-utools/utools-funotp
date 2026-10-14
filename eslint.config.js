@@ -20,9 +20,9 @@ export default tseslint.config(
     },
   },
 
-  // preload 跑在 uTools 的 Node 侧：CommonJS，而且 utools 由宿主注入到全局。
+  // preload 和它旁边的模块跑在 uTools 的 Node 侧：CommonJS，而且 utools 由宿主注入到全局。
   {
-    files: ['utools/preload.js'],
+    files: ['utools/*.js'],
     languageOptions: {
       sourceType: 'commonjs',
       globals: { ...globals.node, ...globals.browser, utools: 'readonly' },

@@ -1,0 +1,33 @@
+/* 图标字体：@font-face 和本插件用到的那些字形码位。 */
+@font-face {
+  font-family: iconfont;
+  src: url('../assets/iconfont.woff2') format('woff2');
+  font-display: block;
+}
+
+.iconfont {
+  font-family: iconfont !important;
+  font-size: 16px;
+  font-style: normal;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 码位取自 iconfont.woff2，只列出本插件用到的字形。 */
+.icon-remarks::before { content: '\e62d'; }
+.icon-move::before { content: '\e602'; }
+.icon-delete::before { content: '\e63c'; }
+.icon-back::before { content: '\e61f'; }
+.icon-dust::before { content: '\e7a6'; }
+.icon-quick-fill::before { content: '\e68c'; }
+.icon-quick::before { content: '\e643'; }
+.icon-add-circle::before { content: '\e664'; }
+.icon-edit::before { content: '\e617'; }
+.icon-dark::before { content: '\e866'; }
+.icon-light::before { content: '\e683'; }
+.icon-add::before { content: '\e685'; }
+.icon-system::before { content: '\e644'; }
+.icon-setting::before { content: '\e632'; }
+.icon-cat::before { content: '\e601'; }
+.icon-totop::before { content: '\e627'; }
+.icon-card::before { content: '\e674'; }

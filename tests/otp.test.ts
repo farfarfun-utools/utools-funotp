@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'vitest'
 import { base32Decode, base32Encode, isValidSecret, normalizeSecret } from '../src/lib/base32'
-import { counterAt, formatCode, generateAccountCode, generateOtp, remainingSeconds } from '../src/lib/otp'
+import { counterAt, counterFor, formatCode, generateOtp, remainingSeconds } from '../src/lib/otp'
 
 const encoder = new TextEncoder()
 // RFC 4226 / 6238 的测试密钥都是这串 ASCII 重复到所需长度。
@@ -46,12 +46,18 @@ test('TOTP 与 RFC 6238 附录 B 的测试向量一致', async () => {
   }
 })
 
-test('generateAccountCode 按账号类型选计数器', async () => {
+test('counterFor 按账号类型选计数器', async () => {
   const totp = { secret: SHA1_SEED, algorithm: 'SHA1', digits: 8, period: 30, type: 'totp' }
-  assert.equal(await generateAccountCode(totp, 59_000), '94287082')
+  assert.equal(counterFor(totp, 59_000), 1)
+  assert.equal(await generateOtp({ ...totp, counter: counterFor(totp, 59_000) }), '94287082')
 
   const hotp = { secret: SHA1_SEED, type: 'hotp', digits: 6, counter: 3 }
-  assert.equal(await generateAccountCode(hotp, Date.now()), '969429', 'HOTP 与时间无关')
+  assert.equal(counterFor(hotp, 59_000), 3)
+  assert.equal(counterFor(hotp, Date.now()), 3, 'HOTP 与时间无关')
+  assert.equal(await generateOtp({ ...hotp, counter: counterFor(hotp) }), '969429')
+
+  // 负计数器会让 counterBytes 输出全零，算出来的码跟任何验证器都对不上，这里必须夹到 0。
+  assert.equal(counterFor({ secret: SHA1_SEED, type: 'hotp', counter: -5 }), 0)
 })
 
 test('Steam 令牌是 5 位专用字母表', async () => {

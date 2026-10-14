@@ -25,7 +25,7 @@ test('normalizeAccount 补齐默认值并夹住越界参数', () => {
   assert.equal(account.digits, 10)
   assert.equal(account.period, 30)
   assert.equal(account.icon, 'GI')
-  assert.match(account.color, /^#[\da-f]{6}$/i)
+  assert.match(String(account.color), /^#[\da-f]{6}$/i)
   assert.deepEqual(account.groupIds, [])
 })
 

@@ -67,13 +67,20 @@ function close() {
 }
 
 // 密钥填对了就能立刻看到验证码，比保存后再回来看省事，也顺手验证了密钥。
+// 快速输入时会有多个 generateOtp 同时在算，WebCrypto 不保证先发先回（命中密钥缓存的那次更快），
+// 所以用序号认领结果：只有最后一次输入算出来的码才能写进界面。
+let previewToken = 0
+
 watch(() => [draft.secret, draft.algorithm, draft.digits, draft.encoding, draft.type, draft.counter], async () => {
+  const token = (previewToken += 1)
   error.value = ''
   if (!draft.secret.trim()) return void (preview.value = '')
   try {
     const counter = draft.type === 'hotp' ? Number(draft.counter) || 0 : Math.floor(Date.now() / 1000 / (Number(draft.period) || 30))
-    preview.value = formatCode(await generateOtp({ ...draft, counter }))
+    const code = formatCode(await generateOtp({ ...draft, counter }))
+    if (token === previewToken) preview.value = code
   } catch (issue) {
+    if (token !== previewToken) return
     preview.value = ''
     error.value = issue.message
   }
@@ -122,8 +129,14 @@ function captureScreen() {
 }
 
 async function pickImage() {
-  const source = window.funotp?.chooseImageFile?.()
+  let source
+  try {
+    source = window.funotp?.chooseImageFile?.()
+  } catch (issue) {
+    return void (error.value = issue.message)
+  }
   if (source) return scanImage(source, '正在识别图片…')
+  // null = 用户取消；undefined = 没有桥（浏览器预览），回落到隐藏的 file input。
   if (source === null) return
   imageInput.value?.click()
 }
@@ -134,6 +147,7 @@ async function readImageInput(event) {
   if (!file) return
   const reader = new FileReader()
   reader.onload = () => scanImage(reader.result, '正在识别图片…')
+  reader.onerror = () => { error.value = '图片读取失败' }
   reader.readAsDataURL(file)
 }
 

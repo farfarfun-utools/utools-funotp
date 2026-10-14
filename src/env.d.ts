@@ -9,7 +9,9 @@ declare module '*.vue' {
 
 // 只声明本插件真正用到的那几个 uTools 接口。宿主注入的是整个 utools 对象，
 // 但在浏览器里 pnpm dev 预览时它根本不存在，所以每一项都是可选的。
-// 参考 https://next.u-tools.cn/docs/developer/api.html
+// 刻意不加 [key: string]: unknown 兜底：加了的话把方法名拼错（uTools 自己就有
+// setExpandHeight / setExpendHeight 这种坑）也能通过类型检查，到运行时才变成一个静默的 no-op。
+// 用到新接口就来这里补一条。参考 https://next.u-tools.cn/docs/developer/api.html
 interface UToolsFeatureCmd {
   type?: string
   label?: string
@@ -49,7 +51,6 @@ interface UToolsDbStorage {
 
 interface UToolsApi {
   copyText?: (text: string) => boolean
-  copyImage?: (data: string | Uint8Array) => boolean
 
   hideMainWindow?: (isFocusPrevWindow?: boolean) => boolean
   showMainWindow?: () => boolean
@@ -65,7 +66,6 @@ interface UToolsApi {
     placeholder?: string,
     isFocus?: boolean,
   ) => boolean
-  removeSubInput?: () => boolean
   /** 回填子输入框的内容。uTools 不提供读取接口，值只能自己从 onChange 里跟着记。 */
   setSubInputValue?: (text: string) => boolean
   /** 让子输入框失去焦点，焦点交给插件页面——子输入框属于主窗口，不这样做插件收不到按键。 */
@@ -89,10 +89,7 @@ interface UToolsApi {
     (): Promise<string>
   }
 
-  isDarkColors?: () => boolean
   dbStorage?: UToolsDbStorage
-
-  [key: string]: unknown
 }
 
 interface WebdavConfig {

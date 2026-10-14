@@ -18,7 +18,7 @@ export function normalizeSecret(value: unknown): string {
 export function base32Decode(value: unknown): Uint8Array<ArrayBuffer> {
   const input = normalizeSecret(value)
   if (!input) throw new Error('请输入密钥')
-  const bytes = []
+  const bytes: number[] = []
   let buffer = 0
   let bits = 0
   for (const char of input) {

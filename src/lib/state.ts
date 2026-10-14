@@ -1,8 +1,28 @@
-import { migrateState, validateState } from './core'
+import { SEARCH_FIELDS, migrateState, validateState } from './core'
 import type { BackupState, StoredAccount } from './core'
 
 // 纯状态逻辑：不依赖 vue / uTools，方便直接跑单测。
 export const STORAGE_KEY = 'funotp-state-v1'
+
+// 分组视图既是界面状态也是会落盘的字段。前缀和它的长度原来在三处被手写（两个文件里的 slice(6)）。
+export const GROUP_VIEW_PREFIX = 'group:'
+
+/** 生成分组对应的视图标识。
+ * @param groupId 分组标识。
+ * @returns 形如 `group:<id>` 的视图标识。
+ */
+export function groupView(groupId: string): string {
+  return `${GROUP_VIEW_PREFIX}${groupId}`
+}
+
+/** 从视图标识中取回分组标识。
+ * @param view 当前视图标识。
+ * @returns 分组标识，不是分组视图时返回空串。
+ */
+export function groupIdOf(view: unknown): string {
+  const text = String(view || '')
+  return text.startsWith(GROUP_VIEW_PREFIX) ? text.slice(GROUP_VIEW_PREFIX.length) : ''
+}
 
 export interface FunOtpSettings {
   display: { columns: number, groupDigits: boolean, maskCode: boolean, showNext: boolean, sort: string }
@@ -30,7 +50,7 @@ export const DEFAULT_SETTINGS: FunOtpSettings = {
   // columns 为 0 表示按窗口宽度自适应。
   display: { columns: 0, groupDigits: true, maskCode: false, showNext: true, sort: 'manual' },
   copy: { outPlugin: true, copyOnEnter: false },
-  search: ['name', 'issuer', 'note'],
+  search: [...SEARCH_FIELDS],
   navbar: { rounded: 36 },
 }
 
@@ -42,33 +62,36 @@ export function emptyState(): FunOtpState {
     version: 1,
     theme: 'system',
     currentView: 'all',
-    settings: JSON.parse(JSON.stringify(DEFAULT_SETTINGS)),
+    settings: structuredClone(DEFAULT_SETTINGS),
     groups: [],
     accounts: [],
   }
 }
 
+// 返回新对象而不是原地改入参：名字读起来像纯函数，之前却会把传进来的备份对象改掉，
+// 调用链上恰好没人复用那个对象才没出问题。
 /** 补全备份状态缺失的界面设置，并修正失效的当前分组。
  * @param state 已通过基本结构校验的备份状态。
- * @returns 可供界面使用的完整状态。
+ * @returns 可供界面使用的完整状态，入参不会被修改。
  */
 export function hydrateState(state: BackupState): FunOtpState {
-  const hydrated = state as FunOtpState
   const settings = state.settings as Partial<FunOtpSettings> | undefined
-  hydrated.settings = {
-    ...DEFAULT_SETTINGS,
-    ...settings,
-    display: { ...DEFAULT_SETTINGS.display, ...settings?.display },
-    copy: { ...DEFAULT_SETTINGS.copy, ...settings?.copy },
-    navbar: { ...DEFAULT_SETTINGS.navbar, ...settings?.navbar },
-    search: settings?.search?.length ? settings.search : DEFAULT_SETTINGS.search.slice(),
+  const hydrated: FunOtpState = {
+    ...(state as FunOtpState),
+    theme: String(state.theme || '') || 'system',
+    currentView: String(state.currentView || '') || 'all',
+    settings: {
+      ...DEFAULT_SETTINGS,
+      ...settings,
+      display: { ...DEFAULT_SETTINGS.display, ...settings?.display },
+      copy: { ...DEFAULT_SETTINGS.copy, ...settings?.copy },
+      navbar: { ...DEFAULT_SETTINGS.navbar, ...settings?.navbar },
+      search: settings?.search?.length ? [...settings.search] : [...SEARCH_FIELDS],
+    },
   }
-  hydrated.theme ||= 'system'
-  hydrated.currentView ||= 'all'
   // 记住的分组可能已经被删掉了，回落到「全部」而不是停在空白页。
-  if (hydrated.currentView.startsWith('group:') && !hydrated.groups.some(group => group.id === hydrated.currentView.slice(6))) {
-    hydrated.currentView = 'all'
-  }
+  const groupId = groupIdOf(hydrated.currentView)
+  if (groupId && !hydrated.groups.some(group => group.id === groupId)) hydrated.currentView = 'all'
   return hydrated
 }
 

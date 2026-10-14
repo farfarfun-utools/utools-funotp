@@ -4,8 +4,9 @@
     "useDefineForClassFields": true,
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    // strict 全开目前还差 74 处 strictNullChecks + 134 处 noImplicitAny（基本都在 .vue 的事件处理函数签名上），
+    // strict 全开目前还差 62 处 strictNullChecks + 105 处 noImplicitAny（基本都在 .vue 的事件处理函数签名上），
     // 先把不用改代码就能通过的几项打开，剩下的按文件逐步补。
+    // src/lib 那一层已经两项全过，由 tsconfig.strict.json 钉住，不会再退回去。
     "strict": false,
     "noImplicitThis": true,
     "noFallthroughCasesInSwitch": true,
@@ -13,8 +14,11 @@
     "forceConsistentCasingInFileNames": true,
     "isolatedModules": true,
     "skipLibCheck": true,
+    // preload 旁边的 webdav.js 是 CommonJS，但它那几条地址守卫有测试，
+    // 让 TS 从 JS 推出类型，测试里就不会退化成 any。
+    "allowJs": true,
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["vite/client", "node"]
   },
-  "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.vue", "tests/**/*.ts", "vite.config.ts"]
+  "include": ["utools/*.js", "src/**/*.ts", "src/**/*.d.ts", "src/**/*.vue", "tests/**/*.ts", "vite.config.ts", "vitest.config.ts"]
 }

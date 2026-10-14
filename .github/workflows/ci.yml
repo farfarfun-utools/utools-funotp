@@ -45,9 +45,12 @@ jobs:
       - name: Test
         run: pnpm test
 
-      # build.sh 还会校验 preload.js、plugin.json 和打包产物的完整性。
+      # build.sh 还会校验 preload.js、plugin.json、版本号一致性和打包产物的完整性。
+      # 上面三步已经跑过检查了，这里跳过，省掉一整轮重复的 lint / typecheck / test。
       - name: Build plugin
         run: ./build.sh
+        env:
+          SKIP_CHECKS: '1'
 
       - name: Upload plugin dist
         if: matrix.node == '20'
@@ -58,6 +61,7 @@ jobs:
             utools/dist
             utools/plugin.json
             utools/preload.js
+            utools/webdav.js
             utools/logo.png
             utools/search.png
           retention-days: 7

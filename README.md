@@ -17,7 +17,9 @@ uTools 两步验证码插件 — 本地管理多个 TOTP 账号，离线生成 G
 
 ```bash
 pnpm install
-pnpm test          # 跑 RFC 测试向量与状态迁移测试
+pnpm test          # 单测 + 组件测试，带覆盖率阈值
+pnpm test:watch    # 改一行跑一次，不算覆盖率
+pnpm typecheck     # vue-tsc，外加 src/lib 那一层的严格模式
 pnpm run dev       # 浏览器预览，数据落在 localStorage
 sh build.sh        # 校验并产出 utools/dist/
 ```

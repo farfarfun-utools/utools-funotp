@@ -1,0 +1,106 @@
+/* 设置抽屉：开关、分组管理、备份与 WebDav。 */
+.settings-drawer {
+  position: fixed;
+  inset: 0 0 0 auto;
+  width: 380px;
+  max-width: 100vw;
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--drawer-shadow);
+}
+.settings-drawer::backdrop, .sub-modal::backdrop { background: rgb(0 0 0 / 50%); }
+.settings-header { height: 54px; display: flex; align-items: flex-start; padding: 20px 20px 0; }
+.settings-header h2 { margin: 0; font-size: 16px; font-weight: 400; line-height: 24px; }
+.settings-close { width: 20px; height: 20px; margin-left: auto; color: var(--muted); font-size: 20px; font-weight: 200; line-height: 18px; }
+.settings-close:hover { color: var(--primary); }
+.settings-body { height: calc(100dvh - 54px); padding: 20px; overflow-y: auto; }
+.settings-tabs { position: relative; height: 40px; display: flex; margin-bottom: 16px; border-bottom: 2px solid var(--border); }
+.settings-tabs button { position: relative; height: 40px; padding: 0 20px; color: var(--text); font-size: 14px; }
+.settings-tabs button:first-child { padding-left: 0; }
+.settings-tabs button.active { color: var(--primary); }
+.settings-tabs button.active::after { content: ''; position: absolute; right: 20px; bottom: -2px; left: 0; height: 2px; background: var(--primary); }
+.settings-tabs button + button.active::after { right: 20px; left: 20px; }
+.setting-field h3, .data-field h3, .data-label { margin: 0 0 10px; color: var(--text); font-size: 14px; font-weight: 400; line-height: 21px; }
+.setting-field h3 small { margin-left: 4px; color: var(--muted); font-size: 12px; }
+.setting-field .switch-line + .switch-line { margin-top: 12px; }
+.settings-divider { height: 1px; margin: 20px 0; background: var(--border); }
+
+.switch-line { display: flex; align-items: center; gap: 9px; width: fit-content; font-size: 14px; cursor: pointer; }
+.switch-line input { position: absolute; opacity: 0; }
+.switch-control { position: relative; width: 40px; height: 20px; flex: 0 0 40px; border-radius: 10px; background: var(--switch-off); transition: background-color .2s; }
+.switch-control::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .2s; }
+.switch-line input:checked + .switch-control { background: var(--primary); }
+.switch-line input:checked + .switch-control::after { transform: translateX(20px); }
+
+.segmented { display: inline-flex; padding: 3px; border: 1px solid var(--border); border-radius: 10px; }
+.segmented label { display: block; }
+.segmented input { position: absolute; opacity: 0; }
+.segmented span { min-height: 28px; display: grid; place-items: center; padding: 4px 12px; border-radius: 7px; color: var(--muted); font-size: 13px; cursor: pointer; }
+.segmented input:checked + span { background: var(--primary-soft); color: var(--primary); }
+
+.checkbox-row { display: flex; align-items: center; gap: 24px; margin-top: 5px; }
+.check { display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 14px; cursor: pointer; }
+.check input { position: absolute; opacity: 0; }
+.check > span { position: relative; width: 14px; height: 14px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); pointer-events: none; }
+.check input:checked + span { border-color: var(--primary); background: var(--primary); }
+.check input:checked + span::after { content: ''; position: absolute; top: 1px; left: 4px; width: 3px; height: 7px; border: solid #fff; border-width: 0 1px 1px 0; transform: rotate(45deg); }
+.check.disabled { color: var(--placeholder); cursor: not-allowed; }
+.check.disabled input:checked + span { border-color: var(--disabled-check-border); background: var(--disabled-check-bg); }
+.check.disabled input:checked + span::after { border-color: var(--disabled-check-color); }
+
+.range {
+  width: 100%;
+  height: 6px;
+  margin: 8px 0 0;
+  appearance: none;
+  border-radius: 3px;
+  background: linear-gradient(to right, var(--primary) 0, var(--primary) calc(var(--range, 36) * 2%), var(--border) calc(var(--range, 36) * 2%), var(--border) 100%);
+  accent-color: var(--primary);
+}
+.range::-webkit-slider-thumb { width: 18px; height: 18px; appearance: none; border: 2px solid var(--primary); border-radius: 50%; background: #fff; }
+
+.data-field { margin-bottom: 22px; }
+.data-label { display: flex; align-items: center; justify-content: space-between; }
+.data-help { margin: -4px 0 10px; color: var(--muted); font-size: 12px; line-height: 18px; }
+.button-pair { display: flex; width: 100%; gap: 12px; }
+.data-button { min-height: 34px; padding: 6px 14px; border-radius: 10px; color: #fff; font-size: 14px; }
+.data-button:hover:not(:disabled) { filter: brightness(1.06); }
+.button-pair .data-button { width: 50%; }
+.data-button.warning { background: #ffba08; }
+.data-button.success { background: var(--success); }
+.data-button.primary { background: var(--primary); }
+.data-button.danger { background: var(--danger); }
+.input-group { display: flex; width: 100%; margin-bottom: 12px; overflow: hidden; border: 1px solid var(--control-border); border-radius: 10px; font-size: 14px; }
+.input-group span { display: flex; align-items: center; padding: 0 14px; border-right: 1px solid var(--control-border); background: var(--fill-light); white-space: nowrap; }
+.input-group select { min-width: 0; flex: 1; border: 0 !important; border-radius: 0 !important; }
+
+.about-pane { font-size: 14px; line-height: 22px; }
+.about-stat { margin: 0 0 18px; padding: 12px 16px; border-radius: 10px; background: var(--primary-soft); color: var(--primary-strong); }
+.about-stat b { font-size: 18px; }
+.about-pane h3 { margin: 0 0 6px; font-size: 15px; font-weight: 500; }
+.about-pane p { margin: 0 0 14px; color: var(--muted); }
+.about-list { margin: 0; padding-left: 18px; color: var(--muted); font-size: 13px; line-height: 22px; }
+.about-list li + li { margin-top: 6px; }
+
+.sub-modal { width: min(480px, calc(100vw - 32px)); margin: 15vh auto 0; padding: 0; border: 0; border-radius: 16px; background: var(--surface); color: var(--text); box-shadow: var(--dialog-shadow); }
+.sub-modal form { position: relative; padding: 22px 26px 26px; }
+.sub-modal > header { position: relative; display: flex; align-items: center; padding: 22px 26px 0; }
+.sub-modal form header { display: flex; align-items: center; margin-bottom: 6px; padding: 0; }
+.sub-modal header h2 { margin: 0; font-size: 18px; font-weight: 500; }
+.sub-modal header button { position: absolute; top: 20px; right: 18px; width: 20px; height: 20px; color: var(--muted); font-size: 20px; font-weight: 200; line-height: 18px; }
+.sub-modal label { display: grid; grid-template-columns: 60px 1fr; align-items: center; gap: 12px; margin: 16px 0; font-size: 14px; }
+.sub-modal footer { display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px; }
+.webdav-file-list { max-height: 360px; margin: 16px 26px 26px; overflow-y: auto; }
+.webdav-file-list > div { min-height: 42px; display: grid; grid-template-columns: minmax(0, 1fr) 70px 48px 48px; align-items: center; border-bottom: 1px solid var(--border); font-size: 14px; }
+.webdav-file-list span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.webdav-file-list small { color: var(--muted); font-size: 12px; }
+.webdav-file-list button:hover { color: var(--primary); }
+.webdav-file-list button.danger-text:hover { color: var(--danger); }
+.webdav-empty { height: 140px; display: grid; place-items: center; color: var(--muted); }

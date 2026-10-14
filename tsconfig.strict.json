@@ -1,0 +1,13 @@
+{
+  // 棘轮：src/lib 这一层（OTP 算法、base32、otpauth 解析、存储、状态）已经过得了
+  // strictNullChecks + noImplicitAny，用一个单独的 project 把它钉住，之后退化会在 CI 上红。
+  // 整个仓库还开不了：.vue 的事件处理函数和 useFunOtp 里还有上百处隐式 any（见 tsconfig.json 的注释）。
+  // 新文件往这里加，不是往后拖——清干净一个目录就把它写进 include。
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "strictNullChecks": true,
+    "noImplicitAny": true
+  },
+  // env.d.ts 带着 window.utools 的声明，不包进来 storage.ts 就无从编译。
+  "include": ["src/lib/**/*.ts", "src/env.d.ts"]
+}

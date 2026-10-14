@@ -1,0 +1,12 @@
+/* 原来是根目录一个 800 行的 style.css，按界面区块拆开了。
+ * 顺序就是原来的源码顺序，CSS 认这个顺序，别重排。
+ * Vite 会把 @import 内联成一份产物，不会多出请求。
+ */
+@import './iconfont.css';
+@import './base.css';
+@import './layout.css';
+@import './card.css';
+@import './overlay.css';
+@import './dialog.css';
+@import './settings.css';
+@import './responsive.css';

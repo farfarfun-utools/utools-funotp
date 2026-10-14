@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import AccountDialog from './components/AccountDialog.vue'
 import AccountGrid from './components/AccountGrid.vue'
 import AppHeader from './components/AppHeader.vue'
+import ConfirmDialog from './components/ConfirmDialog.vue'
 import ContextMenu from './components/ContextMenu.vue'
 import GroupDialog from './components/GroupDialog.vue'
 import QrDialog from './components/QrDialog.vue'
@@ -10,8 +11,12 @@ import SettingsDialog from './components/SettingsDialog.vue'
 import { useFunOtp } from './composables/useFunOtp'
 import { accountLabel } from './lib/core'
 
-const otp = useFunOtp()
-const { state, storageError, toast, groups, activeGroupId, trashCount, currentAccounts } = otp
+// 确认框的 ref 要先声明：下面那个闭包是等用户点删除时才跑的，但 const 的 TDZ 认声明顺序。
+const confirmDialog = ref(null)
+
+const otp = useFunOtp({ confirm: options => confirmDialog.value.ask(options) })
+const { state, storageError, toast, groups, activeGroupId, currentAccounts } = otp
+const { trashCount, activeCount, hasUngrouped, codeViews, now, ringSync } = otp
 
 const accountGrid = ref(null)
 const accountDialog = ref(null)
@@ -22,7 +27,6 @@ const draggedId = ref(null)
 const context = reactive({ visible: false, account: null, x: 0, y: 0 })
 
 const trashView = computed(() => state.value.currentView === 'trash')
-const hasUngrouped = computed(() => state.value.accounts.some(account => !account.deletedAt && !account.groupIds.length))
 const emptyText = computed(() => {
   if (otp.search.value.trim()) return '没有匹配的账号'
   return {
@@ -97,8 +101,8 @@ function handleImport(accounts) {
   otp.showToast(`已导入 ${added.length} 个账号${accounts.length - added.length ? `，跳过 ${accounts.length - added.length} 个重复` : ''}`)
 }
 
-function handleDataFile(type, content, options) {
-  if (otp.processDataFile(type, content, options)) settingsDialog.value.close()
+async function handleDataFile(type, content, options) {
+  if (await otp.processDataFile(type, content, options)) settingsDialog.value.close()
 }
 
 function copyUri(uri) {
@@ -186,7 +190,9 @@ onBeforeUnmount(() => {
         <AccountGrid
           ref="accountGrid"
           :accounts="currentAccounts"
-          :otp="otp"
+          :views="codeViews"
+          :now="now"
+          :ring-sync="ringSync"
           :columns="state.settings.display.columns"
           :active-id="otp.activeAccount.value?.id || ''"
           :show-next="state.settings.display.showNext"
@@ -217,6 +223,7 @@ onBeforeUnmount(() => {
       </span>
     </button>
 
+    <ConfirmDialog ref="confirmDialog" />
     <ContextMenu v-if="context.visible" :items="contextItems" :x="context.x" :y="context.y" @select="handleContextAction" />
     <div v-if="toast.visible" class="toast" :class="{ error: toast.error }" role="status" aria-live="polite">{{ toast.message }}</div>
 
@@ -234,8 +241,9 @@ onBeforeUnmount(() => {
       ref="settingsDialog"
       :settings="state.settings"
       :groups="groups"
-      :account-count="state.accounts.filter(account => !account.deletedAt).length"
-      :backup-data="state"
+      :account-count="activeCount"
+      :backup-content="otp.backupContent"
+      :confirm="otp.confirm"
       @save-settings="otp.saveSettings"
       @export="otp.exportBackup"
       @export-uris="otp.exportUris"

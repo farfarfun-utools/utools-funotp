@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { PropType } from 'vue'
 import type { Group } from '../lib/core'
+import { groupView } from '../lib/state'
 
 defineProps({
   groups: { type: Array as PropType<Group[]>, required: true },
@@ -27,8 +28,8 @@ const emit = defineEmits(['select', 'manage', 'add', 'cycle-theme', 'settings'])
           v-for="group in groups"
           :key="group.id"
           type="button"
-          :class="{ active: currentView === `group:${group.id}` }"
-          @click="emit('select', `group:${group.id}`)"
+          :class="{ active: currentView === groupView(group.id) }"
+          @click="emit('select', groupView(group.id))"
         >
           <span>{{ group.name }}</span>
         </button>

@@ -1,0 +1,74 @@
+name: Release
+
+# 打 v* 标签就出一个可以直接拖进 uTools 的 upx 包。
+# 手动触发留着是为了重跑失败的发版，不用再动标签。
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.10.1
+
+      - uses: actions/setup-node@v4
+        with:
+          # uTools 8.0 内置 Node 20，发版就按它来。
+          node-version: '20'
+          cache: pnpm
+
+      # 发版这一趟不跳检查：这是最后一道关。
+      # build.sh 里会校验 plugin.json / package.json / CHANGELOG 的版本号是否一致。
+      - name: Build plugin
+        run: ./build.sh
+
+      # 标签和 package.json 对不上就不该发出去——uTools 商店认 plugin.json 里的版本号，
+      # 标签只是个名字，两边不一致的话没人能从标签找回这包是哪个版本。
+      - name: Check tag matches version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag=${GITHUB_REF#refs/tags/v}
+          version=$(node -p "require('./package.json').version")
+          test "$tag" = "$version" || {
+            echo "error: 标签 v$tag 与 package.json 版本 $version 不一致" >&2
+            exit 1
+          }
+
+      # upx 就是个 zip：plugin.json 必须在压缩包根目录，所以要在 utools/ 里面打。
+      - name: Pack upx
+        run: |
+          version=$(node -p "require('./package.json').version")
+          cd utools
+          zip -r -q "../funotp-$version.upx" \
+            plugin.json preload.js webdav.js logo.png search.png dist
+          cd ..
+          unzip -l "funotp-$version.upx"
+          echo "PACKAGE=funotp-$version.upx" >> "$GITHUB_ENV"
+
+      - name: Create release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF#refs/tags/}" "$PACKAGE" \
+            --title "${GITHUB_REF#refs/tags/}" \
+            --notes "安装：下载 $PACKAGE 后拖进 uTools 窗口。更新内容见 CHANGELOG.md。" \
+            --verify-tag
+
+      # 手动触发时没有标签，产物挂在这次运行上，方便先装上试一下再决定要不要发。
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: funotp-upx
+          path: ${{ env.PACKAGE }}
+          retention-days: 30

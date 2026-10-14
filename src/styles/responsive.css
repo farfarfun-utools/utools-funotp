@@ -1,0 +1,7 @@
+/* 窄窗口覆盖。必须排在最后，它靠源码顺序盖掉前面的规则。 */
+@media (max-width: 640px) {
+  :root { --nav-padding: 16px; }
+  .otp-grid { grid-template-columns: 1fr !important; }
+  .scan-actions { grid-template-columns: 1fr; }
+  .form-row { grid-template-columns: 1fr; }
+}

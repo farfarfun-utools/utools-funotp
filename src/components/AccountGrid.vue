@@ -4,11 +4,18 @@ import AccountCard from './AccountCard.vue'
 import emptyImage from '../assets/empty.svg'
 import emptyDarkImage from '../assets/empty-dark.svg'
 import type { PropType } from 'vue'
-import type { Account } from '../lib/core'
+import type { Account, CodeView } from '../lib/core'
 
-defineProps({
+const EMPTY_VIEW: CodeView = { code: '······', next: '', invalid: false }
+
+const props = defineProps({
   accounts: { type: Array as PropType<Account[]>, required: true },
-  otp: { type: Object, required: true },
+  // 账号 id → 验证码展示形态。整格共用一份，秒级心跳不会让它重算。
+  views: { type: Object as PropType<Map<string, CodeView>>, required: true },
+  // 当前时刻。倒计时秒数由卡片自己从它算，少一个每秒都要重新生成的函数 prop。
+  now: { type: Number, required: true },
+  // 每次插件重新进入时 +1，让圆环按当前时钟重新对齐。
+  ringSync: { type: Number, default: 0 },
   columns: { type: Number, default: 0 },
   // 方向键选中的账号 id，空串表示没有选中。
   activeId: { type: String, default: '' },
@@ -20,6 +27,11 @@ defineProps({
 const emit = defineEmits(['add', 'copy', 'edit', 'favorite', 'context-menu', 'drag-start', 'drop'])
 
 const grid = ref(null)
+
+// 卡片刚出现、码还没算出来的那一瞬间 views 里还没有它。
+function viewOf(id) {
+  return props.views.get(id) || EMPTY_VIEW
+}
 
 // 上下键要跨行走，得知道一行有几列。columns 设成「自适应」时列数由容器宽度决定，
 // 配置里读不出来，只能问浏览器：gridTemplateColumns 的实际值会把每一列的像素宽度列出来。
@@ -45,14 +57,12 @@ defineExpose({ columnCount })
         v-for="account in accounts"
         :key="account.id"
         :account="account"
-        :code="otp.displayCode(account)"
-        :next-code="otp.displayNext(account)"
-        :seconds="otp.secondsLeft(account)"
-        :ring-sync="otp.ringSync.value"
+        :view="viewOf(account.id)"
+        :now="now"
+        :ring-sync="ringSync"
         :active="account.id === activeId"
         :show-next="showNext"
         :trash-view="trashView"
-        :has-error="Boolean(otp.codeOf(account).error)"
         @copy="emit('copy', $event)"
         @edit="emit('edit', $event)"
         @favorite="emit('favorite', $event)"
