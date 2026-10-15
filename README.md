@@ -1,8 +1,8 @@
-<p align="center"><img src="utools/logo.png" alt="FunOTP" width="88"></p>
-
 # utools-funotp
 
 uTools 两步验证码插件 — 本地管理多个 TOTP 账号，离线生成 Google Authenticator 兼容的动态验证码。
+
+<p align="center"><img src="utools/logo.png" alt="FunOTP" width="88"></p>
 
 ## 特性
 
@@ -68,12 +68,12 @@ src/components/       Vue 组件
 
 ---
 
-## 关于 farfarfun
+## 关于 farfarfun-utools
 
-[farfarfun](https://github.com/farfarfun) 是一个专注于实用工具库的开源组织，
-涵盖云存储、数据处理、AI、多媒体与开发工具链等方向。
+[farfarfun](https://github.com/farfarfun) 的 uTools 插件产品线：本地优先、集成 uTools
+主搜索框、统一 Vue 3 + Vite 技术栈。
 
-- 🏠 组织主页：<https://github.com/farfarfun>
+- 🏠 组织主页：<https://github.com/farfarfun-utools>
 - 📧 联系：farfarfun@qq.com
 
 本项目基于 [MIT](LICENSE) 协议开源。
