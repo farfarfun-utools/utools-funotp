@@ -1,5 +1,5 @@
 {
-  "pluginName": "FunOTP 两步验证",
+  "pluginName": "两步验证 FunOTP",
   "version": "1.0.0",
   "description": "本地管理两步验证账号，离线生成 TOTP / HOTP 动态验证码",
   "author": "farfarfun",
