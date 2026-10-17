@@ -56,8 +56,13 @@ jobs:
         env:
           SKIP_CHECKS: '1'
 
+      # 只在下限那个版本上传一份就够了。这个条件必须跟着上面的矩阵改：原来写的是
+      # node == '20'，而矩阵里早就没有 20 了，产物实际上从来没传上去过 —— 条件不成立
+      # 的步骤会被跳过，流水线照样是绿的，所以这种错不会自己暴露。funlink 踩过同一个坑。
+      # if-no-files-found: error 是第二道保险，管的是另一种情形：条件成立了，但 path
+      # 里的文件名写错或产物没生成，上传一个空包同样是静默通过。
       - name: Upload plugin dist
-        if: matrix.node == '20'
+        if: matrix.node == '22'
         uses: actions/upload-artifact@v4
         with:
           name: utools-funotp
@@ -68,4 +73,5 @@ jobs:
             utools/webdav.js
             utools/logo.png
             utools/search.png
+          if-no-files-found: error
           retention-days: 7
