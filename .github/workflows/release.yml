@@ -23,8 +23,10 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          # uTools 8.0 内置 Node 20，发版就按它来。
-          node-version: '20'
+          # 发版这一趟会跑 build.sh，里面带着单测，所以必须是 22+：jsdom 30 依赖的
+          # undici 8 用了 Node 22.10 才有的 markAsUncloneable，Node 20 上测试直接炸。
+          # 插件跑在 uTools 内置的 Chromium 里，用哪个 Node 构建都不影响产物。
+          node-version: '22'
           cache: pnpm
 
       # 发版这一趟不跳检查：这是最后一道关。

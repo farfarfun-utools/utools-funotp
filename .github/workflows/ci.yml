@@ -19,8 +19,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # uTools 8.0 内置 Node 20，22 用来提前发现下一个 LTS 上的问题。
-        node: ['20', '22']
+        # 22 是测试工具链的硬下限：jsdom 30 依赖 undici 8，而 undici 8 直接用了
+        # Node 22.10 才有的 worker_threads.markAsUncloneable，Node 20 上所有
+        # jsdom 环境的测试文件一加载就炸。插件本身跑在 uTools 内置的 Chromium 里，
+        # 构建用哪个 Node 不影响产物，所以这里跟着工具链走。
+        # 24 用来提前发现新版本上的问题。
+        node: ['22', '24']
 
     steps:
       - uses: actions/checkout@v4
