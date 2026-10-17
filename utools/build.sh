@@ -7,10 +7,24 @@ cd "$ROOT_DIR"
 
 command -v node >/dev/null || { echo "error: Node.js is required" >&2; exit 1; }
 command -v pnpm >/dev/null || { echo "error: pnpm is required (corepack enable)" >&2; exit 1; }
-node -e "if (Number(process.versions.node.split('.')[0]) < 20) process.exit(1)" || {
-  echo "error: Node.js >= 20 is required" >&2
-  exit 1
+# Node 的下限只写在 package.json#engines.node 一处，这里读它来卡。脚本里再抄一个数字，
+# 两边迟早对不上 —— 原来这儿写的是 20，而测试用的 jsdom 30 自己要求 22.22.2+，在 Node 20
+# 上过了这道门，后面所有 jsdom 环境的测试文件一加载就炸。
+node -e '
+const want = (require("./package.json").engines || {}).node || "";
+const match = /^>=\s*(\d+)\.(\d+)\.(\d+)$/.exec(want.trim());
+if (!match) {
+  console.error(`error: package.json#engines.node 是「${want}」，本脚本只认 >=x.y.z 这种写法`);
+  process.exit(2);
 }
+const need = match.slice(1).map(Number);
+const have = process.versions.node.split(".").map(Number);
+const diff = need.map((n, i) => have[i] - n).find((d) => d !== 0) || 0;
+if (diff < 0) {
+  console.error(`error: Node ${want} is required, found ${process.versions.node}`);
+  process.exit(1);
+}
+'
 
 pnpm install --frozen-lockfile
 
