@@ -11,6 +11,7 @@
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1",
+    "screenshots": "node scripts/screenshots.mjs",
     "test": "vitest run --coverage",
     "test:watch": "vitest",
     "typecheck": "vue-tsc --noEmit && vue-tsc --noEmit -p tsconfig.strict.json",

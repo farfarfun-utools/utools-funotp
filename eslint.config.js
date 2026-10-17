@@ -38,10 +38,12 @@ export default tseslint.config(
     rules: { 'vue/no-mutating-props': 'off' },
   },
 
-  // 构建脚本跑在 Node 里。
+  // 构建脚本和截图脚本跑在 Node 里。
   {
-    files: ['vite.config.ts', 'eslint.config.js'],
+    files: ['vite.config.ts', 'eslint.config.js', 'scripts/**/*.mjs'],
     languageOptions: { globals: globals.node },
+    // 这些脚本就是靠 stdout 汇报进度的，console 是功能而不是漏网的调试语句。
+    rules: { 'no-console': 'off' },
   },
 
   {

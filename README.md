@@ -24,7 +24,7 @@ uTools 两步验证码插件 — 本地管理多个 TOTP 账号，离线生成 G
 | <img src="docs/screenshots/settings.png" alt="设置"> | <img src="docs/screenshots/dark.png" alt="深色主题"> |
 | 每行卡片数、分组显示、默认打码、复制后是否退出插件 | 深色主题；最后 5 秒会把下一个验证码先提示出来 |
 
-> 图里的账号和密钥都是为截图造的假数据。
+> 图由 `pnpm screenshots` 生成，账号和密钥都是编的，不对应任何真实账号。
 
 ## 开发
 
@@ -34,8 +34,14 @@ pnpm test          # 单测 + 组件测试，带覆盖率阈值
 pnpm test:watch    # 改一行跑一次，不算覆盖率
 pnpm typecheck     # vue-tsc，外加 src/lib 那一层的严格模式
 pnpm run dev       # 浏览器预览，数据落在 localStorage
+pnpm screenshots   # 重新生成 README 里的截图，没装 Chrome 会跳过
 sh build.sh        # 校验并产出 utools/dist/
 ```
+
+上面那些截图是脚本生成的，不是手工截的：`scripts/screenshots.mjs` 起个静态服务器打开
+`utools/dist`，按 `plugin.json` 里的窗口尺寸拍。时钟冻在固定时刻、倒计时圆环钉死进度，
+所以界面不动的话重跑多少次产出都逐字节相同。打 `v*` 标签时 CI 会自动跑一遍，图真变了
+才提交回来（`.github/workflows/screenshots.yml`）。
 
 在 uTools 开发者工具里导入 `utools/plugin.json` 即可调试。
 
