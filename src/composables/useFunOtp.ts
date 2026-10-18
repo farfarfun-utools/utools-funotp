@@ -561,10 +561,11 @@ export function useFunOtp({ confirm = fallbackConfirm }: { confirm?: (options: C
           danger: true,
         })
         if (!ok) return false
+        // 先落盘再切界面与快捷入口，写失败时继续保留当前账号。
+        writeStorage(STORAGE_KEY, restored)
         state.value = restored
-        // 恢复成功即说明拿到了可用数据，可以解除只读保护。
         storageError.value = ''
-        saveState()
+        dirty = false
         applyTheme()
         refreshCodes()
         // 账号表整体换掉了：重新注册备份里标了关键字的账号，并清掉指向旧账号的残留。

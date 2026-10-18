@@ -212,6 +212,18 @@ test('从备份恢复会先问一句，确认后才整表替换', async () => {
   assert.equal(sure.state.value.accounts[0].name, 'remote')
 })
 
+test('恢复写入失败时保留原账号且不报告成功', async () => {
+  const { db } = setup({ stored: storedState([account('local')]) })
+  const otp = useFunOtp({ confirm: () => Promise.resolve(true) })
+  await settle(otp)
+  db.setItem = () => { throw new Error('disk full') }
+
+  assert.equal(await otp.processDataFile('restore', JSON.stringify(storedState([account('remote')]))), false)
+  assert.deepEqual(otp.state.value.accounts.map(item => item.id), ['local'])
+  assert.deepEqual(savedAccounts(db).map(item => item.id), ['local'])
+  assert.equal(otp.toast.error, true)
+})
+
 test('导入是追加去重，不碰已有账号', async () => {
   setup({ stored: storedState([account('a')]) })
   const otp = useFunOtp()
