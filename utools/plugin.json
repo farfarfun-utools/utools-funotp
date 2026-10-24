@@ -1,7 +1,7 @@
 {
-  "pluginName": "两步验证 FunOTP",
+  "pluginName": "密钥随行",
   "version": "1.0.0",
-  "description": "本地管理两步验证账号，离线生成 TOTP / HOTP 动态验证码",
+  "description": "密钥随行 FunOTP：本地管理两步验证账号，离线生成 TOTP / HOTP 动态验证码",
   "author": "farfarfun",
   "main": "dist/index.html",
   "preload": "preload.js",
@@ -15,7 +15,7 @@
       "description": "管理两步验证账号并复制动态验证码",
       "explain": "管理两步验证账号并复制动态验证码",
       "icon": "logo.png",
-      "cmds": ["FunOTP", "两步验证", "动态验证码"]
+      "cmds": ["密钥随行", "FunOTP", "两步验证", "动态验证码"]
     },
     {
       "code": "search-otp",

@@ -40,5 +40,7 @@
     "vitest": "^4.1.12",
     "vue-eslint-parser": "^10.4.1",
     "vue-tsc": "^3.3.12"
-  }
+  },
+  "description": "密钥随行 FunOTP：本地管理两步验证账号，离线生成 TOTP / HOTP 动态验证码",
+  "homepage": "https://farfarfun.github.io/packages/utools-funotp/"
 }

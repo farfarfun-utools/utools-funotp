@@ -45,7 +45,7 @@ window.funotp = {
   // 返回 false 表示用户取消，界面据此不提示「已导出」，也不能回落到浏览器下载。
   saveBackup(content, defaultName) {
     const destination = utools.showSaveDialog({
-      title: '导出 FunOTP 数据',
+      title: '导出密钥随行 FunOTP 数据',
       defaultPath: defaultName,
       filters: [{ name: defaultName.endsWith('.json') ? 'JSON' : '文本', extensions: [defaultName.split('.').pop()] }],
     })

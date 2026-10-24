@@ -1,4 +1,6 @@
-# 两步验证 FunOTP
+# 密钥随行 · FunOTP
+
+[产品主页](https://farfarfun.github.io/packages/utools-funotp/) · 原名「两步验证」
 
 uTools 两步验证码插件 — 本地管理多个 TOTP 账号，离线生成 Google Authenticator 兼容的动态验证码。
 
@@ -43,7 +45,7 @@ sh build.sh        # 校验并产出 utools/dist/
 所以界面不动的话重跑多少次产出都逐字节相同。打 `v*` 标签时 CI 会自动跑一遍，图真变了
 才提交回来（`.github/workflows/screenshots.yml`）。
 
-在 uTools 开发者工具里导入 `utools/plugin.json` 即可调试。
+在 uTools 开发者工具里导入 `utools/plugin.json` 即可调试。输入 `密钥随行`、`FunOTP`、`两步验证` 或 `动态验证码` 打开插件。
 
 ### 最小使用示例
 

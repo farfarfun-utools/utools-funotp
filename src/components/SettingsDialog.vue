@@ -302,7 +302,7 @@ defineExpose({ open, close })
 
       <div v-else class="settings-pane about-pane" role="tabpanel">
         <p class="about-stat"><b>{{ accountCount }}</b> 个账号 · <b>{{ groups.length }}</b> 个分组</p>
-        <h3>FunOTP</h3>
+        <h3>密钥随行 · FunOTP</h3>
         <p>本地两步验证码管理器，兼容 Google Authenticator、Microsoft Authenticator、Authy 等使用的 TOTP / HOTP 标准。</p>
         <ul class="about-list">
           <li>验证码全部在本机离线计算，插件自身不会把密钥发给任何第三方服务。</li>
