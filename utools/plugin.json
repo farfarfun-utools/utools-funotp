@@ -15,7 +15,7 @@
       "description": "管理两步验证账号并复制动态验证码",
       "explain": "管理两步验证账号并复制动态验证码",
       "icon": "logo.png",
-      "cmds": ["FunOTP", "两步验证", "动态验证码", "totp", "2fa"]
+      "cmds": ["FunOTP", "两步验证", "动态验证码"]
     },
     {
       "code": "search-otp",
