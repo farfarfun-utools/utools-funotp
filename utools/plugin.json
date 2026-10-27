@@ -1,6 +1,6 @@
 {
   "pluginName": "密钥随行",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "密钥随行 FunOTP：本地管理两步验证账号，离线生成 TOTP / HOTP 动态验证码",
   "author": "farfarfun",
   "main": "dist/index.html",

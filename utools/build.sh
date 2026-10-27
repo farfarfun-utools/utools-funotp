@@ -43,8 +43,7 @@ for file in "$PLUGIN_DIR"/*.js; do node --check "$file"; done
 node -e "JSON.parse(require('fs').readFileSync('$PLUGIN_DIR/plugin.json', 'utf8'))"
 
 # preload 旁边的模块（webdav.js）是运行时 require 进来的，Vite 不会打包它。
-# 漏出 upx 的话插件装上去就是「preload 加载失败」，而本地跑 dev 完全看不出来，
-# 所以这里按 preload 里的 require 反查两个工作流的文件清单。
+# 漏出安装包会导致 preload 加载失败；检查文件存在，并确认工作流包含整目录或明确文件。
 node -e '
 const fs = require("fs")
 const path = require("path")
@@ -54,10 +53,11 @@ const required = [...preload.matchAll(/require\(.\.\/([\w.-]+).\)/g)].map(match 
 const fail = message => { console.error(`error: ${message}`); process.exitCode = 1 }
 for (const file of required) {
   if (!fs.existsSync(path.join(path.dirname(preloadPath), file))) fail(`preload.js require 了不存在的 ${file}`)
-  // ci.yml 写的是 utools/webdav.js，release.yml 写的是 webdav.js，两种都要认。
   const pattern = new RegExp(`(^|[\\s/])${file.replace(/\./g, "\\.")}(\\s|$)`, "m")
   for (const workflowPath of workflowPaths) {
-    if (!pattern.test(fs.readFileSync(workflowPath, "utf8"))) fail(`${path.basename(workflowPath)} 的文件清单里没有 ${file}`)
+    const workflow = fs.readFileSync(workflowPath, "utf8")
+    const packsDirectory = /^\s+source:\s*utools\s*$/m.test(workflow)
+    if (!packsDirectory && !pattern.test(workflow)) fail(`${path.basename(workflowPath)} 的打包配置没有包含 ${file}`)
   }
 }
 ' "$PLUGIN_DIR/preload.js" .github/workflows/release.yml .github/workflows/ci.yml

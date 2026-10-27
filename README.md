@@ -6,6 +6,12 @@ uTools 两步验证码插件 — 本地管理多个 TOTP 账号，离线生成 G
 
 <p align="center"><img src="utools/logo.png" alt="FunOTP" width="160" height="160"></p>
 
+## UPXS 安装与发布
+
+从 [v1.0.1 Release](https://github.com/farfarfun-utools/utools-funotp/releases/tag/v1.0.1) 下载 `utools-funotp-1.0.1.upxs`，导入 uTools 测试。也可在成功的 CI 中下载 `utools-funotp-upxs-preview` 附件。打包链路已由用户在 FunCalc 上验证；本插件的实机安装与功能仍需分别确认。
+
+项目根目录 [`identity.json`](identity.json) 明文维护官方项目 ID `zwrjnuoi`。`mid`、`uid`、`cellphone` 由 `farfarfun-utools` 组织的 `UTOOLS_MID`、`UTOOLS_UID`、`UTOOLS_CELLPHONE` Secrets 注入，不写入公开配置。CI 和 Release 统一调用固定版本的 [utools-devtools](https://github.com/farfarfun-action/utools-devtools)，生成 `.upxs` 与 `SHA256SUMS`，PR 不执行身份打包。
+
 ## 特性
 
 - **本地计算**：验证码由本机按 RFC 4226 / RFC 6238 计算，插件自身不请求任何第三方服务（WebDav 备份除外，需你手动配置）。

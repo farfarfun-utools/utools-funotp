@@ -77,3 +77,9 @@ yarn-error.log*
 .specstory/
 CLAUDE.local.md
 AGENTS.local.md
+
+# UPXS outputs and private identity exports
+*.upxs
+/release/
+identity.private*.json
+identity.local.json
