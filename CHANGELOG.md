@@ -1,5 +1,9 @@
 # 更新日志
 
+## 1.0.3
+
+- 统一前端构建入口，并将 npm 包名调整为 `@farfarfun/utools-funotp`。
+
 ## 1.0.2
 
 - 新增 `list_otp_accounts` AI/MCP 工具，只返回账号标签，不暴露密钥、动态验证码或备注。
