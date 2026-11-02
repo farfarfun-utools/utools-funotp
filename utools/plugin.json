@@ -46,5 +46,15 @@
       ]
     }
   ],
-  "platform": ["darwin", "win32", "linux"]
+  "platform": ["darwin", "win32", "linux"],
+  "tools": {
+    "list_otp_accounts": {
+      "description": "列出 FunOTP 中未删除账号的名称与服务商，不返回密钥、动态验证码、备注或备份。",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": { "keyword": { "type": "string", "description": "可选，只匹配账号名和服务商；最多返回 50 条" } }
+      }
+    }
+  }
 }

@@ -50,6 +50,7 @@ interface UToolsDbStorage {
 }
 
 interface UToolsApi {
+  registerTool?: (name: string, handler: (params: Record<string, unknown>) => unknown) => void
   copyText?: (text: string) => boolean
 
   hideMainWindow?: (isFocusPrevWindow?: boolean) => boolean
