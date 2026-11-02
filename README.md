@@ -12,6 +12,10 @@ uTools 两步验证码插件 — 本地管理多个 TOTP 账号，离线生成 G
 
 项目根目录 [`identity.json`](identity.json) 明文维护官方项目 ID `zwrjnuoi`。`mid`、`uid`、`cellphone` 由 `farfarfun-utools` 组织的 `UTOOLS_MID`、`UTOOLS_UID`、`UTOOLS_CELLPHONE` Secrets 注入，不写入公开配置。CI 和 Release 统一调用固定版本的 [utools-devtools](https://github.com/farfarfun-action/utools-devtools)，生成 `.upxs` 与 `SHA256SUMS`，PR 不执行身份打包。
 
+## AI / MCP 工具
+
+`list_otp_accounts` 按名称或服务商筛选未删除账号，只返回 ID、服务商与账号名，最多 50 条；不会返回密钥、验证码、备注或备份。账号标签会交给调用方，第三方 Agent 需由用户开启 uTools MCP 服务。需 uTools 8 的工具能力。
+
 ## 特性
 
 - **本地计算**：验证码由本机按 RFC 4226 / RFC 6238 计算，插件自身不请求任何第三方服务（WebDav 备份除外，需你手动配置）。

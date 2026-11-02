@@ -6,6 +6,7 @@ import { counterFor, formatCode, generateOtp, remainingSeconds } from '../lib/ot
 import { buildOtpauthUri, parseOtpauthText } from '../lib/otpauth'
 import { STORAGE_KEY, groupIdOf, loadState, nextIndex, prepareState } from '../lib/state'
 import { readStorage, writeStorage } from '../lib/storage'
+import { listOtpAccounts } from '../lib/ai-tools'
 
 // 倒计时圆环由 CSS 动画推进，JS 只需要每秒对一次时间来刷新秒数和验证码。
 // 起点对齐到整秒，周期边界一到就能立刻翻新。
@@ -587,6 +588,7 @@ export function useFunOtp({ confirm = fallbackConfirm }: { confirm?: (options: C
   }
 
   function setupUtools({ addAccount }) {
+    window.utools?.registerTool?.('list_otp_accounts', ({ keyword }) => listOtpAccounts(state.value, keyword))
     setPanelHeight()
     window.utools?.setSubInput?.(({ text }) => { search.value = text || '' }, '搜索账号', true)
     state.value.accounts.forEach(syncQuickFeature)
