@@ -38,23 +38,8 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: pnpm
 
-      - run: pnpm install --frozen-lockfile
-
-      - name: Lint
-        run: pnpm lint
-
-      - name: Typecheck
-        run: pnpm typecheck
-
-      - name: Test
-        run: pnpm test
-
-      # build.sh 还会校验 preload.js、plugin.json、版本号一致性和打包产物的完整性。
-      # 上面三步已经跑过检查了，这里跳过，省掉一整轮重复的 lint / typecheck / test。
-      - name: Build plugin
-        run: ./build.sh
-        env:
-          SKIP_CHECKS: '1'
+      - name: Check and build plugin
+        run: sh build.sh
 
       # 只在下限那个版本上传一份就够了。这个条件必须跟着上面的矩阵改：原来写的是
       # node == '20'，而矩阵里早就没有 20 了，产物实际上从来没传上去过 —— 条件不成立

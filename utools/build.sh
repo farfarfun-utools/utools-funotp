@@ -28,16 +28,9 @@ if (diff < 0) {
 
 pnpm install --frozen-lockfile
 
-# CI 把 lint / typecheck / test 拆成了独立步骤（哪一步红的一眼就能看出来），
-# 再在这里跑一遍就是白等一倍时间。本地直接 ./build.sh 时默认全跑：
-# 一条命令就该把该查的都查完。
-if [ "${SKIP_CHECKS:-0}" = "1" ]; then
-  echo "SKIP_CHECKS=1: 跳过 lint / typecheck / test"
-else
-  pnpm lint
-  pnpm typecheck
-  pnpm test
-fi
+pnpm lint
+pnpm typecheck
+pnpm test
 
 for file in "$PLUGIN_DIR"/*.js; do node --check "$file"; done
 node -e "JSON.parse(require('fs').readFileSync('$PLUGIN_DIR/plugin.json', 'utf8'))"
