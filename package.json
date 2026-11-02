@@ -1,6 +1,7 @@
 {
-  "name": "utools-funotp",
-  "version": "1.0.2",
+  "name": "@farfarfun/utools-funotp",
+  "funbuild": { "build": "sh build.sh" },
+  "version": "1.0.3",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@12.10.1",
