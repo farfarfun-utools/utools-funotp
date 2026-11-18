@@ -9,7 +9,6 @@ import GroupDialog from './components/GroupDialog.vue'
 import QrDialog from './components/QrDialog.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
 import { useFunOtp } from './composables/useFunOtp'
-import { accountLabel } from './lib/core'
 
 // 确认框的 ref 要先声明：下面那个闭包是等用户点删除时才跑的，但 const 的 TDZ 认声明顺序。
 const confirmDialog = ref(null)
@@ -70,12 +69,7 @@ function handleContextAction(action) {
   closeContextMenu()
   if (!account) return
   if (action === 'copy') otp.copyCode(account)
-  if (action === 'copy-next') {
-    const next = otp.codeOf(account).next
-    if (!next) return otp.showToast('验证码还没算出来，请稍等', true)
-    otp.copyText(next)
-    otp.showToast(`已复制 ${accountLabel(account)} 的下一个验证码`)
-  }
+  if (action === 'copy-next') otp.copyCode(account, true)
   if (action === 'edit') accountDialog.value.open(account)
   if (action === 'favorite') otp.toggleFavorite(account)
   if (action === 'quick') otp.toggleQuick(account)
@@ -96,8 +90,15 @@ function handleDrop(targetId) {
   draggedId.value = null
 }
 
+function finishAccountDialog(saved) {
+  if (saved) accountDialog.value.close()
+  else accountDialog.value.saveError = otp.toast.message
+}
+
 function handleImport(accounts) {
   const added = otp.importAccounts(accounts, activeGroupId.value)
+  finishAccountDialog(added)
+  if (!added) return
   otp.showToast(`已导入 ${added.length} 个账号${accounts.length - added.length ? `，跳过 ${accounts.length - added.length} 个重复` : ''}`)
 }
 
@@ -105,8 +106,8 @@ async function handleDataFile(type, content, options) {
   if (await otp.processDataFile(type, content, options)) settingsDialog.value.close()
 }
 
-function copyUri(uri) {
-  otp.copyText(uri)
+async function copyUri(uri) {
+  if (!await otp.copyText(uri)) return
   otp.showToast('链接已复制，请尽快粘贴并清空剪贴板')
 }
 
@@ -231,7 +232,7 @@ onBeforeUnmount(() => {
       ref="accountDialog"
       :groups="groups"
       :default-group-id="activeGroupId"
-      @save="otp.saveAccount"
+      @save="account => finishAccountDialog(otp.saveAccount(account))"
       @import="handleImport"
       @message="otp.showToast"
     />

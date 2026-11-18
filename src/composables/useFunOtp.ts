@@ -136,13 +136,19 @@ export function useFunOtp({ confirm = fallbackConfirm }: { confirm?: (options: C
 
   // 写失败（超出 dbStorage 单文档上限、磁盘异常）必须让用户看见，
   // 否则改动只留在内存里，下次进插件就全没了。
-  function saveState() {
-    if (storageError.value) return
+  function saveState(next = state.value) {
+    if (storageError.value) {
+      showToast(storageError.value, true)
+      return false
+    }
     try {
-      writeStorage(STORAGE_KEY, state.value)
+      writeStorage(STORAGE_KEY, next)
+      state.value = next
       dirty = false
+      return true
     } catch (error) {
       showToast(`保存失败：${error.message}`, true)
+      return false
     }
   }
 
@@ -275,35 +281,56 @@ export function useFunOtp({ confirm = fallbackConfirm }: { confirm?: (options: C
     return views
   })
 
-  function copyText(text) {
-    if (window.utools?.copyText) window.utools.copyText(text)
-    else navigator.clipboard?.writeText(text)
+  let clipboardBusy = false
+  function copyText(text: string, afterCopy = () => true): boolean | Promise<boolean> {
+    function failed() {
+      showToast('写入剪贴板失败，请检查剪贴板权限后重试', true)
+      return false
+    }
+    try {
+      if (window.utools?.copyText) {
+        if (window.utools.copyText(text) === false) return failed()
+      } else {
+        if (clipboardBusy) return false
+        const written = navigator.clipboard.writeText(text)
+        clipboardBusy = true
+        return written.then(afterCopy, failed).finally(() => { clipboardBusy = false })
+      }
+    } catch {
+      return failed()
+    }
+    return afterCopy()
   }
 
   // 三条复制路径（卡片点击、uTools 关键字、主搜索推送）都走这里。
   // 少一处检查就会把空串塞进剪贴板，少一次自增就会让 HOTP 一直复制同一个已失效的码。
-  function copyAccountCode(account, { notify = true } = {}) {
+  function copyAccountCode(account, next = false) {
     const entry = codeOf(account)
     if (entry.error) {
-      if (notify) showToast(`「${accountLabel(account)}」密钥无效`, true)
+      showToast(`「${accountLabel(account)}」密钥无效`, true)
       return false
     }
-    if (!entry.code) {
-      if (notify) showToast('验证码还没算出来，请稍等', true)
+    if (!entry.code || entry.counter !== counterFor(account) || entry.signature !== signatureOf(account)) {
+      void ensureCodes([account])
+      showToast('验证码还没算出来，请稍等', true)
       return false
     }
-    copyText(entry.code)
-    // HOTP 用一次就该往前走一格，否则下次还是同一个码。
-    if (account.type === 'hotp') {
-      account.counter = counterOf(account) + 1
-      saveState()
+    return copyText(next ? entry.next : entry.code, () => {
+      if (account.type !== 'hotp' || next) return true
+      // 已用过的计数器即使落盘失败也留在内存，退出时会再次尝试保存。
+      account.counter = entry.counter + 1
+      const saved = saveState()
       refreshCodes()
-    }
-    return true
+      if (!saved) showToast(`验证码已复制，但计数器未保存。${toast.message}`, true)
+      return saved
+    })
   }
 
-  function copyCode(account) {
-    if (!copyAccountCode(account)) return
+  async function copyCode(account, next = false) {
+    const result = copyAccountCode(account, next)
+    const copied = result instanceof Promise ? await result : result
+    if (!copied) return
+    if (next) return showToast(`已复制 ${accountLabel(account)} 的下一个验证码`)
     if (state.value.settings.copy.outPlugin && window.utools?.outPlugin) {
       // outPlugin 只退出插件视图，uTools 主搜索框还会弹出来，得先隐藏主窗口才算彻底关掉。
       window.utools?.hideMainWindow?.()
@@ -315,10 +342,11 @@ export function useFunOtp({ confirm = fallbackConfirm }: { confirm?: (options: C
     const id = input.id || createId('account')
     const previous = state.value.accounts.find(account => account.id === id)
     const account = normalizeAccount({ ...previous, ...input, id, deletedAt: null })
-    if (previous) state.value.accounts[state.value.accounts.indexOf(previous)] = account
-    else state.value.accounts.push(account)
+    const accounts = previous
+      ? state.value.accounts.map(item => item === previous ? account : item)
+      : [...state.value.accounts, account]
+    if (!saveState({ ...state.value, accounts })) return null
     syncQuickFeature(account)
-    saveState()
     refreshCodes()
     showToast(previous ? '账号已更新' : '账号已添加')
     return account
@@ -540,10 +568,10 @@ export function useFunOtp({ confirm = fallbackConfirm }: { confirm?: (options: C
       const account = normalizeAccount({ ...item, id: createId('account'), groupIds: groupId ? [groupId] : [] })
       if (existing.has(accountKey(account))) continue
       existing.add(accountKey(account))
-      state.value.accounts.push(account)
       added.push(account)
     }
-    saveState()
+    if (!added.length) return added
+    if (!saveState({ ...state.value, accounts: [...state.value.accounts, ...added] })) return null
     refreshCodes()
     return added
   }
@@ -578,6 +606,7 @@ export function useFunOtp({ confirm = fallbackConfirm }: { confirm?: (options: C
       const { accounts, errors } = parseOtpauthText(content)
       if (!accounts.length) throw new Error(errors[0] || '没有找到 otpauth:// 链接')
       const added = importAccounts(accounts, options.groupId)
+      if (!added) return false
       const skipped = accounts.length - added.length
       showToast(`已导入 ${added.length} 个账号${skipped ? `，跳过 ${skipped} 个重复` : ''}${errors.length ? `，${errors.length} 条无法识别` : ''}`)
       return true
@@ -607,7 +636,7 @@ export function useFunOtp({ confirm = fallbackConfirm }: { confirm?: (options: C
         // 关键字指向的账号不一定在当前视图里，refreshCodes 只算可见卡片，这里得点名算它。
         await ensureCodes([account])
         // 这条路径上界面是隐藏的，复制失败就把窗口拉回来让用户看到提示，而不是静默退出。
-        if (!copyAccountCode(account)) return void window.utools?.showMainWindow?.()
+        if (!await copyAccountCode(account)) return void window.utools?.showMainWindow?.()
         window.utools?.hideMainWindow?.()
         window.utools?.outPlugin?.()
         return
@@ -615,7 +644,10 @@ export function useFunOtp({ confirm = fallbackConfirm }: { confirm?: (options: C
       if (action.code === 'add-otp') {
         const { accounts } = parseOtpauthText(String(action.payload || ''))
         if (accounts.length === 1) addAccount(accounts[0])
-        else if (accounts.length > 1) showToast(`已导入 ${importAccounts(accounts).length} 个账号`)
+        else if (accounts.length > 1) {
+          const added = importAccounts(accounts)
+          if (added) showToast(`已导入 ${added.length} 个账号`)
+        }
         return
       }
       if (action.code === 'search-otp') {
@@ -650,7 +682,7 @@ export function useFunOtp({ confirm = fallbackConfirm }: { confirm?: (options: C
     ({ option }) => {
       const account = state.value.accounts.find(item => item.id === option?.accountId)
       if (!account) return false
-      if (!copyAccountCode(account)) return true
+      if (copyAccountCode(account) !== true) return true
       window.utools?.hideMainWindow?.()
       return false
     })

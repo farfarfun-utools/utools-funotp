@@ -104,6 +104,7 @@ test('HOTP 复制后计数器自增并落盘', async () => {
   assert.match(before, /^\d{6}$/)
 
   otp.copyCode(hotp)
+  otp.copyCode(hotp)
   await settle(otp)
   assert.deepEqual(copied, [before])
   assert.equal(hotp.counter, 4, '不自增的话下次还是同一个码')
@@ -123,6 +124,76 @@ test('密钥无效时不往剪贴板塞东西', async () => {
   otp.copyCode(broken)
   assert.deepEqual(copied, [])
   assert.equal(otp.toast.error, true)
+})
+
+test('主搜索复制失败保留 HOTP 计数器，同步返回打开插件展示错误', async () => {
+  const onMainPush = vi.fn()
+  const hideMainWindow = vi.fn()
+  const { db } = setup({
+    stored: storedState([account('h', { type: 'hotp', counter: 3 })]),
+    utools: { onMainPush, hideMainWindow, copyText: () => false },
+  })
+  const otp = useFunOtp()
+  await settle(otp)
+  otp.setupUtools({ addAccount: () => {} })
+  const select = onMainPush.mock.calls[0][1]
+  assert.equal(select({ option: { accountId: 'h' } }), true)
+  assert.match(otp.toast.message, /剪贴板失败/)
+  assert.equal(otp.state.value.accounts[0].counter, 3)
+  assert.equal(db.writes, 0)
+  assert.equal(hideMainWindow.mock.calls.length, 0)
+})
+
+test('浏览器拒绝写入剪贴板时保留 HOTP 计数器', async () => {
+  const { db } = setup({ stored: storedState([account('h', { type: 'hotp', counter: 3 })]), utools: { copyText: undefined } })
+  vi.stubGlobal('navigator', { clipboard: { writeText: async () => { throw new Error('permission denied') } } })
+  const otp = useFunOtp()
+  await settle(otp)
+  await otp.copyCode(otp.state.value.accounts[0])
+  assert.equal(otp.toast.error, true)
+  assert.match(otp.toast.message, /剪贴板/)
+  assert.equal(otp.state.value.accounts[0].counter, 3)
+  assert.equal(db.writes, 0)
+})
+
+test('HOTP 已复制但计数器落盘失败时明确提示，并在退出时重试', async () => {
+  const outPlugin = vi.fn()
+  const onPluginOut = vi.fn()
+  const { db, copied } = setup({ stored: storedState([account('h', { type: 'hotp', counter: 3 })]), utools: { outPlugin, onPluginOut } })
+  const otp = useFunOtp()
+  otp.setupUtools({ addAccount: () => {} })
+  await settle(otp)
+  const hotp = otp.state.value.accounts[0]
+  const code = otp.codeOf(hotp).code
+  vi.spyOn(db, 'setItem').mockImplementationOnce(() => { throw new Error('disk full') })
+  await otp.copyCode(hotp)
+  assert.deepEqual(copied, [code])
+  assert.equal(hotp.counter, 4)
+  assert.equal(savedAccounts(db)[0].counter, 3)
+  assert.equal(otp.toast.error, true)
+  assert.match(otp.toast.message, /已复制.*计数器未保存.*disk full/)
+  assert.equal(outPlugin.mock.calls.length, 0)
+  onPluginOut.mock.calls[0][0]()
+  assert.equal(savedAccounts(db)[0].counter, 4)
+})
+
+test('TOTP 周期切换时不复制上一周期的缓存码', async () => {
+  const { copied } = setup({ stored: storedState([account('t')]) })
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(59_999)
+  try {
+    const otp = useFunOtp()
+    await settle(otp)
+    const current = otp.state.value.accounts[0]
+    assert.match(otp.codeOf(current).code, /^\d{6}$/)
+    clock.mockReturnValue(60_000)
+    otp.copyCode(current)
+    assert.deepEqual(copied, [])
+    await settle(otp)
+    otp.copyCode(current)
+    assert.deepEqual(copied, [otp.codeOf(current).code])
+  } finally {
+    clock.mockRestore()
+  }
 })
 
 test('保存框点取消时既不提示成功也不落文件', async () => {
@@ -233,6 +304,24 @@ test('导入是追加去重，不碰已有账号', async () => {
   assert.equal(await otp.processDataFile('import', `${uri}\n${uri}`), true)
   assert.equal(otp.state.value.accounts.length, 2, '两条一样的链接只进一条')
   assert.equal(otp.state.value.accounts[0].id, 'a', '原有账号不动')
+})
+
+test('保存新账号、编辑和批量导入写入失败时保留原密钥和失败提示', async () => {
+  const { db } = setup({ stored: storedState([account('local')]) })
+  const otp = useFunOtp()
+  await settle(otp)
+  const write = vi.spyOn(db, 'setItem').mockImplementation(() => { throw new Error('disk full') })
+  assert.equal(otp.saveAccount(account('new')), null)
+  assert.equal(otp.saveAccount({ ...account('local'), secret: 'MFRGGZDF' }), null)
+  const uri = `otpauth://totp/Acme:me?secret=${SECRET}`
+  assert.equal(await otp.processDataFile('import', uri), false)
+  assert.equal(otp.toast.error, true)
+  assert.match(otp.toast.message, /disk full/)
+  assert.deepEqual(otp.state.value.accounts.map(item => [item.id, item.secret]), [['local', SECRET]])
+  assert.deepEqual(savedAccounts(db).map(item => item.id), ['local'])
+  write.mockRestore()
+  assert.equal(await otp.processDataFile('import', uri), true)
+  assert.equal(savedAccounts(db).length, 2)
 })
 
 test('计数一次扫表就全算出来', async () => {
