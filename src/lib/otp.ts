@@ -91,7 +91,7 @@ export function normalizeDigits(digits: unknown): number {
  */
 export function normalizePeriod(period: unknown): number {
   const value = Number(period)
-  return Number.isFinite(value) && value > 0 ? Math.min(Math.trunc(value), 3600) : DEFAULT_PERIOD
+  return Number.isFinite(value) && value > 0 ? Math.min(Math.max(Math.trunc(value), 1), 3600) : DEFAULT_PERIOD
 }
 
 /** 根据密钥和计数器生成 HOTP、TOTP 或 Steam 验证码。

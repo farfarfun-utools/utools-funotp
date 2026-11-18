@@ -104,6 +104,7 @@ test('HOTP 复制后计数器自增并落盘', async () => {
   assert.match(before, /^\d{6}$/)
 
   otp.copyCode(hotp)
+  otp.copyCode(hotp)
   await settle(otp)
   assert.deepEqual(copied, [before])
   assert.equal(hotp.counter, 4, '不自增的话下次还是同一个码')
@@ -123,6 +124,25 @@ test('密钥无效时不往剪贴板塞东西', async () => {
   otp.copyCode(broken)
   assert.deepEqual(copied, [])
   assert.equal(otp.toast.error, true)
+})
+
+test('TOTP 周期切换时不复制上一周期的缓存码', async () => {
+  const { copied } = setup({ stored: storedState([account('t')]) })
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(59_999)
+  try {
+    const otp = useFunOtp()
+    await settle(otp)
+    const current = otp.state.value.accounts[0]
+    assert.match(otp.codeOf(current).code, /^\d{6}$/)
+    clock.mockReturnValue(60_000)
+    otp.copyCode(current)
+    assert.deepEqual(copied, [])
+    await settle(otp)
+    otp.copyCode(current)
+    assert.deepEqual(copied, [otp.codeOf(current).code])
+  } finally {
+    clock.mockRestore()
+  }
 })
 
 test('保存框点取消时既不提示成功也不落文件', async () => {

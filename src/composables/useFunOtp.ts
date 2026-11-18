@@ -282,19 +282,20 @@ export function useFunOtp({ confirm = fallbackConfirm }: { confirm?: (options: C
 
   // 三条复制路径（卡片点击、uTools 关键字、主搜索推送）都走这里。
   // 少一处检查就会把空串塞进剪贴板，少一次自增就会让 HOTP 一直复制同一个已失效的码。
-  function copyAccountCode(account, { notify = true } = {}) {
+  function copyAccountCode(account, next = false) {
     const entry = codeOf(account)
     if (entry.error) {
-      if (notify) showToast(`「${accountLabel(account)}」密钥无效`, true)
+      showToast(`「${accountLabel(account)}」密钥无效`, true)
       return false
     }
-    if (!entry.code) {
-      if (notify) showToast('验证码还没算出来，请稍等', true)
+    if (!entry.code || entry.counter !== counterFor(account) || entry.signature !== signatureOf(account)) {
+      void ensureCodes([account])
+      showToast('验证码还没算出来，请稍等', true)
       return false
     }
-    copyText(entry.code)
+    copyText(next ? entry.next : entry.code)
     // HOTP 用一次就该往前走一格，否则下次还是同一个码。
-    if (account.type === 'hotp') {
+    if (account.type === 'hotp' && !next) {
       account.counter = counterOf(account) + 1
       saveState()
       refreshCodes()
@@ -302,8 +303,9 @@ export function useFunOtp({ confirm = fallbackConfirm }: { confirm?: (options: C
     return true
   }
 
-  function copyCode(account) {
-    if (!copyAccountCode(account)) return
+  function copyCode(account, next = false) {
+    if (!copyAccountCode(account, next)) return
+    if (next) return showToast(`已复制 ${accountLabel(account)} 的下一个验证码`)
     if (state.value.settings.copy.outPlugin && window.utools?.outPlugin) {
       // outPlugin 只退出插件视图，uTools 主搜索框还会弹出来，得先隐藏主窗口才算彻底关掉。
       window.utools?.hideMainWindow?.()

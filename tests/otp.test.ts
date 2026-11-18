@@ -78,6 +78,7 @@ test('异常参数被夹到合法范围而不是抛错', async () => {
   assert.equal((await generateOtp({ secret: SHA1_SEED, digits: 99, counter: 0 })).length, 10)
   assert.equal((await generateOtp({ secret: SHA1_SEED, digits: 0, counter: 0 })).length, 4)
   assert.equal(counterAt(59_000, 0), counterAt(59_000, 30), '周期为 0 时回落到默认 30 秒')
+  assert.equal(counterAt(59_000, 0.5), 59, '小于一秒的正周期按一秒计算')
 })
 
 test('验证码按位数分组显示', () => {

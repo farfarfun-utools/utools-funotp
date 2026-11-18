@@ -9,7 +9,6 @@ import GroupDialog from './components/GroupDialog.vue'
 import QrDialog from './components/QrDialog.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
 import { useFunOtp } from './composables/useFunOtp'
-import { accountLabel } from './lib/core'
 
 // 确认框的 ref 要先声明：下面那个闭包是等用户点删除时才跑的，但 const 的 TDZ 认声明顺序。
 const confirmDialog = ref(null)
@@ -70,12 +69,7 @@ function handleContextAction(action) {
   closeContextMenu()
   if (!account) return
   if (action === 'copy') otp.copyCode(account)
-  if (action === 'copy-next') {
-    const next = otp.codeOf(account).next
-    if (!next) return otp.showToast('验证码还没算出来，请稍等', true)
-    otp.copyText(next)
-    otp.showToast(`已复制 ${accountLabel(account)} 的下一个验证码`)
-  }
+  if (action === 'copy-next') otp.copyCode(account, true)
   if (action === 'edit') accountDialog.value.open(account)
   if (action === 'favorite') otp.toggleFavorite(account)
   if (action === 'quick') otp.toggleQuick(account)
