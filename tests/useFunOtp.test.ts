@@ -255,6 +255,24 @@ test('导入是追加去重，不碰已有账号', async () => {
   assert.equal(otp.state.value.accounts[0].id, 'a', '原有账号不动')
 })
 
+test('保存新账号、编辑和批量导入写入失败时保留原密钥和失败提示', async () => {
+  const { db } = setup({ stored: storedState([account('local')]) })
+  const otp = useFunOtp()
+  await settle(otp)
+  const write = vi.spyOn(db, 'setItem').mockImplementation(() => { throw new Error('disk full') })
+  assert.equal(otp.saveAccount(account('new')), null)
+  assert.equal(otp.saveAccount({ ...account('local'), secret: 'MFRGGZDF' }), null)
+  const uri = `otpauth://totp/Acme:me?secret=${SECRET}`
+  assert.equal(await otp.processDataFile('import', uri), false)
+  assert.equal(otp.toast.error, true)
+  assert.match(otp.toast.message, /disk full/)
+  assert.deepEqual(otp.state.value.accounts.map(item => [item.id, item.secret]), [['local', SECRET]])
+  assert.deepEqual(savedAccounts(db).map(item => item.id), ['local'])
+  write.mockRestore()
+  assert.equal(await otp.processDataFile('import', uri), true)
+  assert.equal(savedAccounts(db).length, 2)
+})
+
 test('计数一次扫表就全算出来', async () => {
   setup({
     stored: storedState(

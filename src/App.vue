@@ -90,8 +90,15 @@ function handleDrop(targetId) {
   draggedId.value = null
 }
 
+function finishAccountDialog(saved) {
+  if (saved) accountDialog.value.close()
+  else accountDialog.value.saveError = otp.toast.message
+}
+
 function handleImport(accounts) {
   const added = otp.importAccounts(accounts, activeGroupId.value)
+  finishAccountDialog(added)
+  if (!added) return
   otp.showToast(`已导入 ${added.length} 个账号${accounts.length - added.length ? `，跳过 ${accounts.length - added.length} 个重复` : ''}`)
 }
 
@@ -225,7 +232,7 @@ onBeforeUnmount(() => {
       ref="accountDialog"
       :groups="groups"
       :default-group-id="activeGroupId"
-      @save="otp.saveAccount"
+      @save="account => finishAccountDialog(otp.saveAccount(account))"
       @import="handleImport"
       @message="otp.showToast"
     />

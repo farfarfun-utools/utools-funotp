@@ -3,7 +3,7 @@ import { computed, nextTick, reactive, ref, watch } from 'vue'
 import type { PropType } from 'vue'
 import { COLORS, colorFor, initials, safeColor } from '../lib/core'
 import type { Group } from '../lib/core'
-import { formatCode, generateOtp } from '../lib/otp'
+import { counterFor, formatCode, generateOtp } from '../lib/otp'
 import { parseOtpauthText } from '../lib/otpauth'
 import { decodeQrImage, readClipboardImage } from '../lib/qr'
 
@@ -21,6 +21,7 @@ const mode = ref('scan')
 const uriText = ref('')
 const busy = ref('')
 const error = ref('')
+const saveError = ref('')
 const preview = ref('')
 const showSecret = ref(false)
 
@@ -56,6 +57,7 @@ function open(account = null) {
   mode.value = editing.value || draft.secret ? 'manual' : 'scan'
   uriText.value = ''
   error.value = ''
+  saveError.value = ''
   busy.value = ''
   showSecret.value = !editing.value
   if (!dialog.value.open) dialog.value.showModal()
@@ -71,13 +73,12 @@ function close() {
 // 所以用序号认领结果：只有最后一次输入算出来的码才能写进界面。
 let previewToken = 0
 
-watch(() => [draft.secret, draft.algorithm, draft.digits, draft.encoding, draft.type, draft.counter], async () => {
+watch(() => [draft.secret, draft.algorithm, draft.digits, draft.encoding, draft.type, draft.counter, draft.period], async () => {
   const token = (previewToken += 1)
   error.value = ''
   if (!draft.secret.trim()) return void (preview.value = '')
   try {
-    const counter = draft.type === 'hotp' ? Number(draft.counter) || 0 : Math.floor(Date.now() / 1000 / (Number(draft.period) || 30))
-    const code = formatCode(await generateOtp({ ...draft, counter }))
+    const code = formatCode(await generateOtp({ ...draft, counter: counterFor(draft) }))
     if (token === previewToken) preview.value = code
   } catch (issue) {
     if (token !== previewToken) return
@@ -95,7 +96,6 @@ function applyParsed(list) {
     return
   }
   emit('import', list)
-  close()
 }
 
 function parseText(text, source) {
@@ -172,10 +172,9 @@ function submit() {
   }
   if (error.value) return
   emit('save', { ...draft, color: safeColor(draft.color), icon: draft.icon.trim() })
-  close()
 }
 
-defineExpose({ open, close })
+defineExpose({ open, close, saveError })
 </script>
 
 <template>
@@ -327,7 +326,7 @@ defineExpose({ open, close })
           </details>
         </section>
 
-        <p class="form-error" role="alert">{{ busy || error }}</p>
+        <p class="form-error" role="alert">{{ busy || error || saveError }}</p>
       </div>
 
       <footer class="otp-dialog-footer">

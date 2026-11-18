@@ -136,13 +136,19 @@ export function useFunOtp({ confirm = fallbackConfirm }: { confirm?: (options: C
 
   // 写失败（超出 dbStorage 单文档上限、磁盘异常）必须让用户看见，
   // 否则改动只留在内存里，下次进插件就全没了。
-  function saveState() {
-    if (storageError.value) return
+  function saveState(next = state.value) {
+    if (storageError.value) {
+      showToast(storageError.value, true)
+      return false
+    }
     try {
-      writeStorage(STORAGE_KEY, state.value)
+      writeStorage(STORAGE_KEY, next)
+      state.value = next
       dirty = false
+      return true
     } catch (error) {
       showToast(`保存失败：${error.message}`, true)
+      return false
     }
   }
 
@@ -317,10 +323,11 @@ export function useFunOtp({ confirm = fallbackConfirm }: { confirm?: (options: C
     const id = input.id || createId('account')
     const previous = state.value.accounts.find(account => account.id === id)
     const account = normalizeAccount({ ...previous, ...input, id, deletedAt: null })
-    if (previous) state.value.accounts[state.value.accounts.indexOf(previous)] = account
-    else state.value.accounts.push(account)
+    const accounts = previous
+      ? state.value.accounts.map(item => item === previous ? account : item)
+      : [...state.value.accounts, account]
+    if (!saveState({ ...state.value, accounts })) return null
     syncQuickFeature(account)
-    saveState()
     refreshCodes()
     showToast(previous ? '账号已更新' : '账号已添加')
     return account
@@ -542,10 +549,10 @@ export function useFunOtp({ confirm = fallbackConfirm }: { confirm?: (options: C
       const account = normalizeAccount({ ...item, id: createId('account'), groupIds: groupId ? [groupId] : [] })
       if (existing.has(accountKey(account))) continue
       existing.add(accountKey(account))
-      state.value.accounts.push(account)
       added.push(account)
     }
-    saveState()
+    if (!added.length) return added
+    if (!saveState({ ...state.value, accounts: [...state.value.accounts, ...added] })) return null
     refreshCodes()
     return added
   }
@@ -580,6 +587,7 @@ export function useFunOtp({ confirm = fallbackConfirm }: { confirm?: (options: C
       const { accounts, errors } = parseOtpauthText(content)
       if (!accounts.length) throw new Error(errors[0] || '没有找到 otpauth:// 链接')
       const added = importAccounts(accounts, options.groupId)
+      if (!added) return false
       const skipped = accounts.length - added.length
       showToast(`已导入 ${added.length} 个账号${skipped ? `，跳过 ${skipped} 个重复` : ''}${errors.length ? `，${errors.length} 条无法识别` : ''}`)
       return true
@@ -617,7 +625,10 @@ export function useFunOtp({ confirm = fallbackConfirm }: { confirm?: (options: C
       if (action.code === 'add-otp') {
         const { accounts } = parseOtpauthText(String(action.payload || ''))
         if (accounts.length === 1) addAccount(accounts[0])
-        else if (accounts.length > 1) showToast(`已导入 ${importAccounts(accounts).length} 个账号`)
+        else if (accounts.length > 1) {
+          const added = importAccounts(accounts)
+          if (added) showToast(`已导入 ${added.length} 个账号`)
+        }
         return
       }
       if (action.code === 'search-otp') {
