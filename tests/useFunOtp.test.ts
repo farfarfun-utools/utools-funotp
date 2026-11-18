@@ -126,6 +126,57 @@ test('密钥无效时不往剪贴板塞东西', async () => {
   assert.equal(otp.toast.error, true)
 })
 
+test('主搜索复制失败保留 HOTP 计数器，同步返回打开插件展示错误', async () => {
+  const onMainPush = vi.fn()
+  const hideMainWindow = vi.fn()
+  const { db } = setup({
+    stored: storedState([account('h', { type: 'hotp', counter: 3 })]),
+    utools: { onMainPush, hideMainWindow, copyText: () => false },
+  })
+  const otp = useFunOtp()
+  await settle(otp)
+  otp.setupUtools({ addAccount: () => {} })
+  const select = onMainPush.mock.calls[0][1]
+  assert.equal(select({ option: { accountId: 'h' } }), true)
+  assert.match(otp.toast.message, /剪贴板失败/)
+  assert.equal(otp.state.value.accounts[0].counter, 3)
+  assert.equal(db.writes, 0)
+  assert.equal(hideMainWindow.mock.calls.length, 0)
+})
+
+test('浏览器拒绝写入剪贴板时保留 HOTP 计数器', async () => {
+  const { db } = setup({ stored: storedState([account('h', { type: 'hotp', counter: 3 })]), utools: { copyText: undefined } })
+  vi.stubGlobal('navigator', { clipboard: { writeText: async () => { throw new Error('permission denied') } } })
+  const otp = useFunOtp()
+  await settle(otp)
+  await otp.copyCode(otp.state.value.accounts[0])
+  assert.equal(otp.toast.error, true)
+  assert.match(otp.toast.message, /剪贴板/)
+  assert.equal(otp.state.value.accounts[0].counter, 3)
+  assert.equal(db.writes, 0)
+})
+
+test('HOTP 已复制但计数器落盘失败时明确提示，并在退出时重试', async () => {
+  const outPlugin = vi.fn()
+  const onPluginOut = vi.fn()
+  const { db, copied } = setup({ stored: storedState([account('h', { type: 'hotp', counter: 3 })]), utools: { outPlugin, onPluginOut } })
+  const otp = useFunOtp()
+  otp.setupUtools({ addAccount: () => {} })
+  await settle(otp)
+  const hotp = otp.state.value.accounts[0]
+  const code = otp.codeOf(hotp).code
+  vi.spyOn(db, 'setItem').mockImplementationOnce(() => { throw new Error('disk full') })
+  await otp.copyCode(hotp)
+  assert.deepEqual(copied, [code])
+  assert.equal(hotp.counter, 4)
+  assert.equal(savedAccounts(db)[0].counter, 3)
+  assert.equal(otp.toast.error, true)
+  assert.match(otp.toast.message, /已复制.*计数器未保存.*disk full/)
+  assert.equal(outPlugin.mock.calls.length, 0)
+  onPluginOut.mock.calls[0][0]()
+  assert.equal(savedAccounts(db)[0].counter, 4)
+})
+
 test('TOTP 周期切换时不复制上一周期的缓存码', async () => {
   const { copied } = setup({ stored: storedState([account('t')]) })
   const clock = vi.spyOn(Date, 'now').mockReturnValue(59_999)

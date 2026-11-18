@@ -281,9 +281,25 @@ export function useFunOtp({ confirm = fallbackConfirm }: { confirm?: (options: C
     return views
   })
 
-  function copyText(text) {
-    if (window.utools?.copyText) window.utools.copyText(text)
-    else navigator.clipboard?.writeText(text)
+  let clipboardBusy = false
+  function copyText(text: string, afterCopy = () => true): boolean | Promise<boolean> {
+    function failed() {
+      showToast('写入剪贴板失败，请检查剪贴板权限后重试', true)
+      return false
+    }
+    try {
+      if (window.utools?.copyText) {
+        if (window.utools.copyText(text) === false) return failed()
+      } else {
+        if (clipboardBusy) return false
+        const written = navigator.clipboard.writeText(text)
+        clipboardBusy = true
+        return written.then(afterCopy, failed).finally(() => { clipboardBusy = false })
+      }
+    } catch {
+      return failed()
+    }
+    return afterCopy()
   }
 
   // 三条复制路径（卡片点击、uTools 关键字、主搜索推送）都走这里。
@@ -299,18 +315,21 @@ export function useFunOtp({ confirm = fallbackConfirm }: { confirm?: (options: C
       showToast('验证码还没算出来，请稍等', true)
       return false
     }
-    copyText(next ? entry.next : entry.code)
-    // HOTP 用一次就该往前走一格，否则下次还是同一个码。
-    if (account.type === 'hotp' && !next) {
-      account.counter = counterOf(account) + 1
-      saveState()
+    return copyText(next ? entry.next : entry.code, () => {
+      if (account.type !== 'hotp' || next) return true
+      // 已用过的计数器即使落盘失败也留在内存，退出时会再次尝试保存。
+      account.counter = entry.counter + 1
+      const saved = saveState()
       refreshCodes()
-    }
-    return true
+      if (!saved) showToast(`验证码已复制，但计数器未保存。${toast.message}`, true)
+      return saved
+    })
   }
 
-  function copyCode(account, next = false) {
-    if (!copyAccountCode(account, next)) return
+  async function copyCode(account, next = false) {
+    const result = copyAccountCode(account, next)
+    const copied = result instanceof Promise ? await result : result
+    if (!copied) return
     if (next) return showToast(`已复制 ${accountLabel(account)} 的下一个验证码`)
     if (state.value.settings.copy.outPlugin && window.utools?.outPlugin) {
       // outPlugin 只退出插件视图，uTools 主搜索框还会弹出来，得先隐藏主窗口才算彻底关掉。
@@ -617,7 +636,7 @@ export function useFunOtp({ confirm = fallbackConfirm }: { confirm?: (options: C
         // 关键字指向的账号不一定在当前视图里，refreshCodes 只算可见卡片，这里得点名算它。
         await ensureCodes([account])
         // 这条路径上界面是隐藏的，复制失败就把窗口拉回来让用户看到提示，而不是静默退出。
-        if (!copyAccountCode(account)) return void window.utools?.showMainWindow?.()
+        if (!await copyAccountCode(account)) return void window.utools?.showMainWindow?.()
         window.utools?.hideMainWindow?.()
         window.utools?.outPlugin?.()
         return
@@ -663,7 +682,7 @@ export function useFunOtp({ confirm = fallbackConfirm }: { confirm?: (options: C
     ({ option }) => {
       const account = state.value.accounts.find(item => item.id === option?.accountId)
       if (!account) return false
-      if (!copyAccountCode(account)) return true
+      if (copyAccountCode(account) !== true) return true
       window.utools?.hideMainWindow?.()
       return false
     })

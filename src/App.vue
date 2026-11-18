@@ -106,8 +106,8 @@ async function handleDataFile(type, content, options) {
   if (await otp.processDataFile(type, content, options)) settingsDialog.value.close()
 }
 
-function copyUri(uri) {
-  otp.copyText(uri)
+async function copyUri(uri) {
+  if (!await otp.copyText(uri)) return
   otp.showToast('链接已复制，请尽快粘贴并清空剪贴板')
 }
 
