@@ -28,9 +28,13 @@ if (diff < 0) {
 
 pnpm install --frozen-lockfile
 
-pnpm lint
-pnpm typecheck
-pnpm test
+if [ "${SKIP_CHECKS:-0}" = "1" ]; then
+  echo "SKIP_CHECKS=1: 跳过 lint / typecheck / test"
+else
+  pnpm lint
+  pnpm typecheck
+  pnpm test
+fi
 
 for file in "$PLUGIN_DIR"/*.js; do node --check "$file"; done
 node -e "JSON.parse(require('fs').readFileSync('$PLUGIN_DIR/plugin.json', 'utf8'))"
