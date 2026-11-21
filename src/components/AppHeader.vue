@@ -9,8 +9,10 @@ defineProps({
   theme: { type: String, required: true },
   rounded: { type: Number, default: 36 },
   hasUngrouped: Boolean,
+  trashCount: { type: Number, default: 0 },
+  trashView: Boolean,
 })
-const emit = defineEmits(['select', 'manage', 'add', 'cycle-theme', 'settings'])
+const emit = defineEmits(['select', 'manage', 'add', 'toggle-trash', 'cycle-theme', 'settings'])
 </script>
 
 <template>
@@ -44,6 +46,19 @@ const emit = defineEmits(['select', 'manage', 'add', 'cycle-theme', 'settings'])
       </button>
       <button class="round-button" type="button" title="添加账号" aria-label="添加账号" @click.stop="emit('add')">
         <i class="iconfont icon-add-circle" aria-hidden="true" />
+      </button>
+      <button
+        class="round-button trash-button"
+        :class="{ 'is-trash': trashView }"
+        type="button"
+        :aria-label="trashView ? '返回全部账号' : '打开废纸篓'"
+        :title="trashView ? '返回' : '废纸篓'"
+        @click.stop="emit('toggle-trash')"
+      >
+        <span class="trash-badge">
+          <i class="iconfont" :class="trashView ? 'icon-back' : 'icon-dust'" aria-hidden="true" />
+          <sup v-if="trashCount && !trashView">{{ trashCount }}</sup>
+        </span>
       </button>
       <button class="round-button theme-button" type="button" title="切换主题" aria-label="切换主题" @click.stop="emit('cycle-theme')">
         <i class="iconfont" :class="theme === 'dark' ? 'icon-dark' : theme === 'light' ? 'icon-light' : 'icon-system'" aria-hidden="true" />

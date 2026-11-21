@@ -1,6 +1,8 @@
 /* 窄窗口覆盖。必须排在最后，它靠源码顺序盖掉前面的规则。 */
 @media (max-width: 640px) {
-  :root { --nav-padding: 16px; }
+  :root { --nav-padding: 12px; }
+  .top-nav-scroll > button { padding: 0 10px; font-size: 12.5px; }
+  .round-button { width: 28px; height: 28px; flex-basis: 28px; margin-left: 2px; }
   .otp-grid { grid-template-columns: 1fr !important; }
   .scan-actions { grid-template-columns: 1fr; }
   .form-row { grid-template-columns: 1fr; }

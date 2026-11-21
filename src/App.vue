@@ -23,7 +23,18 @@ const groupDialog = ref(null)
 const qrDialog = ref(null)
 const settingsDialog = ref(null)
 const draggedId = ref(null)
+const copiedId = ref('')
+let copiedTimer: ReturnType<typeof setTimeout> | undefined
 const context = reactive({ visible: false, account: null, x: 0, y: 0 })
+
+async function copyAccount(account, next = false) {
+  await otp.copyCode(account, next)
+  if (!otp.toast.error) {
+    copiedId.value = account.id
+    clearTimeout(copiedTimer)
+    copiedTimer = setTimeout(() => { copiedId.value = '' }, 650)
+  }
+}
 
 const trashView = computed(() => state.value.currentView === 'trash')
 const emptyText = computed(() => {
@@ -68,8 +79,8 @@ function handleContextAction(action) {
   const account = context.account
   closeContextMenu()
   if (!account) return
-  if (action === 'copy') otp.copyCode(account)
-  if (action === 'copy-next') otp.copyCode(account, true)
+  if (action === 'copy') void copyAccount(account)
+  if (action === 'copy-next') void copyAccount(account, true)
   if (action === 'edit') accountDialog.value.open(account)
   if (action === 'favorite') otp.toggleFavorite(account)
   if (action === 'quick') otp.toggleQuick(account)
@@ -143,7 +154,7 @@ function handleKeydown(event) {
   const account = trashView.value ? null : otp.enterTarget()
   if (!account) return
   event.preventDefault()
-  otp.copyCode(account)
+  void copyAccount(account)
 }
 
 onMounted(() => {
@@ -153,6 +164,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  clearTimeout(copiedTimer)
   document.removeEventListener('click', closeContextMenu)
   document.removeEventListener('keydown', handleKeydown)
 })
@@ -166,9 +178,12 @@ onBeforeUnmount(() => {
       :theme="state.theme"
       :rounded="state.settings.navbar.rounded"
       :has-ungrouped="hasUngrouped"
+      :trash-count="trashCount"
+      :trash-view="trashView"
       @select="otp.setView"
       @manage="groupDialog.open()"
       @add="accountDialog.open()"
+      @toggle-trash="otp.setView(trashView ? 'all' : 'trash')"
       @cycle-theme="otp.cycleTheme"
       @settings="settingsDialog.open()"
     />
@@ -196,12 +211,13 @@ onBeforeUnmount(() => {
           :ring-sync="ringSync"
           :columns="state.settings.display.columns"
           :active-id="otp.activeAccount.value?.id || ''"
+          :copied-id="copiedId"
           :show-next="state.settings.display.showNext"
           :trash-view="trashView"
           :show-add="!trashView && !otp.search.value.trim()"
           :empty-text="emptyText"
           @add="accountDialog.open()"
-          @copy="otp.copyCode"
+          @copy="copyAccount"
           @edit="accountDialog.open($event)"
           @favorite="otp.toggleFavorite"
           @context-menu="openContextMenu"
@@ -210,19 +226,6 @@ onBeforeUnmount(() => {
         />
       </div>
     </main>
-
-    <button
-      class="trash-button"
-      type="button"
-      :aria-label="trashView ? '返回全部账号' : '打开废纸篓'"
-      :title="trashView ? '返回' : '废纸篓'"
-      @click="otp.setView(trashView ? 'all' : 'trash')"
-    >
-      <span class="trash-badge">
-        <i class="iconfont" :class="trashView ? 'icon-back' : 'icon-dust'" aria-hidden="true" />
-        <sup v-if="trashCount && !trashView">{{ trashCount }}</sup>
-      </span>
-    </button>
 
     <ConfirmDialog ref="confirmDialog" />
     <ContextMenu v-if="context.visible" :items="contextItems" :x="context.x" :y="context.y" @select="handleContextAction" />

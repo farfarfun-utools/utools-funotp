@@ -19,6 +19,7 @@ const props = defineProps({
   columns: { type: Number, default: 0 },
   // 方向键选中的账号 id，空串表示没有选中。
   activeId: { type: String, default: '' },
+  copiedId: { type: String, default: '' },
   showNext: Boolean,
   trashView: Boolean,
   showAdd: Boolean,
@@ -61,6 +62,7 @@ defineExpose({ columnCount })
         :now="now"
         :ring-sync="ringSync"
         :active="account.id === activeId"
+        :copied="account.id === copiedId"
         :show-next="showNext"
         :trash-view="trashView"
         @copy="emit('copy', $event)"

@@ -14,6 +14,7 @@ const props = defineProps({
   ringSync: { type: Number, default: 0 },
   // 被方向键选中。点击选中不走这条路，所以选中框只在键盘操作时出现。
   active: Boolean,
+  copied: Boolean,
   showNext: Boolean,
   trashView: Boolean,
 })
@@ -56,7 +57,7 @@ const subtitle = computed(() => (props.account.issuer ? props.account.name : '')
   <article
     ref="card"
     class="otp-card"
-    :class="{ expiring, invalid: view.invalid, trashed: trashView, active }"
+    :class="{ expiring, invalid: view.invalid, trashed: trashView, active, copied }"
     tabindex="-1"
     :draggable="!trashView"
     :title="trashView ? accountLabel(account) : `点击复制 ${accountLabel(account)} 的验证码`"
