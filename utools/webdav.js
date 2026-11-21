@@ -6,6 +6,8 @@ const http = require('http')
 const https = require('https')
 
 const WEBDAV_DIRECTORY = 'FunOTP'
+const MAX_RESPONSE_BYTES = 16 * 1024 * 1024
+const NO_REDIRECT_METHODS = new Set(['PUT', 'DELETE'])
 
 // 重定向跟过去的地址必须同源，否则 Authorization 头会连带密码一起发给新服务器。
 // origin 为空表示这是第一跳，还没有需要比对的来源。
@@ -15,28 +17,83 @@ function checkedTarget(url, origin) {
   return target
 }
 
-function request(url, { method = 'GET', headers = {}, body = '', timeout = 10000, redirects = 3, origin } = {}) {
+function request(url, { method = 'GET', headers = {}, body = '', timeout = 10000, redirects = 3, origin, maxBytes = MAX_RESPONSE_BYTES, deadline } = {}) {
   return new Promise((resolve, reject) => {
-    const target = checkedTarget(url, origin)
+    let target
+    try {
+      target = checkedTarget(url, origin)
+    } catch (error) {
+      return reject(error)
+    }
     const expectedOrigin = origin || target.origin
+    const totalDeadline = deadline ?? (Date.now() + timeout)
+    const remaining = totalDeadline - Date.now()
+    if (remaining <= 0) return reject(new Error(`${timeout / 1000}秒超时`))
+
     const client = target.protocol === 'https:' ? https : http
-    const req = client.request(target, { method, headers }, response => {
+    let settled = false
+    let req
+    const finish = (fn, value) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      fn(value)
+    }
+    const timer = setTimeout(() => {
+      const error = new Error(`${timeout / 1000}秒超时`)
+      finish(reject, error)
+      req?.destroy(error)
+    }, remaining)
+
+    req = client.request(target, { method, headers }, response => {
       if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location && redirects) {
         response.resume()
-        return resolve(request(new URL(response.headers.location, target).href, { method, headers, body, timeout, redirects: redirects - 1, origin: expectedOrigin }))
+        if (NO_REDIRECT_METHODS.has(String(method).toUpperCase())) {
+          return finish(reject, new Error('WebDav 写入或删除操作不允许重定向'))
+        }
+        let nextUrl
+        try {
+          nextUrl = new URL(response.headers.location, target).href
+        } catch {
+          return finish(reject, new Error('WebDav 重定向地址无效'))
+        }
+        clearTimeout(timer)
+        settled = true
+        return resolve(request(nextUrl, {
+          method,
+          headers,
+          body,
+          timeout,
+          redirects: redirects - 1,
+          origin: expectedOrigin,
+          maxBytes,
+          deadline: totalDeadline,
+        }))
       }
       const chunks = []
-      response.on('data', chunk => chunks.push(chunk))
+      let totalBytes = 0
+      response.on('data', chunk => {
+        totalBytes += chunk.length
+        if (totalBytes > maxBytes) {
+          const error = new Error(`WebDav 响应体积超过 ${Math.round(maxBytes / (1024 * 1024))} MB 上限`)
+          finish(reject, error)
+          response.destroy(error)
+          req.destroy(error)
+          return
+        }
+        chunks.push(chunk)
+      })
+      response.on('error', error => finish(reject, error))
+      response.on('aborted', () => finish(reject, new Error('WebDav 连接被中断')))
       response.on('end', () => {
         const content = Buffer.concat(chunks).toString('utf8')
         // MKCOL 撞上已存在的目录会返回 405，这不算失败。
         if ((response.statusCode >= 200 && response.statusCode < 300) || (method === 'MKCOL' && response.statusCode === 405)) {
-          resolve({ status: response.statusCode, body: content })
-        } else reject(new Error(`${response.statusCode} ${response.statusMessage || '请求失败'}`))
+          finish(resolve, { status: response.statusCode, body: content })
+        } else finish(reject, new Error(`${response.statusCode} ${response.statusMessage || '请求失败'}`))
       })
     })
-    req.setTimeout(timeout, () => req.destroy(new Error(`${timeout / 1000}秒超时`)))
-    req.on('error', reject)
+    req.on('error', error => finish(reject, error))
     if (body) req.write(body)
     req.end()
   })
@@ -48,11 +105,14 @@ function webdavBase(config) {
   if (!host) throw new Error('请先填写 WebDav 服务器地址')
   let base
   try {
-    base = new URL(host.endsWith('/') ? host : `${host}/`)
+    base = new URL(host)
   } catch {
     throw new Error(`WebDav 服务器地址无法解析：${host}`)
   }
   if (base.protocol !== 'https:') throw new Error('WebDav 服务器必须使用 HTTPS')
+  base.search = ''
+  base.hash = ''
+  if (!base.pathname.endsWith('/')) base.pathname += '/'
   return base
 }
 
@@ -61,20 +121,35 @@ function webdavTarget(config, file = '') {
 }
 
 // 拿 pathname 原样比不够：%2e%2e 这类转义过的上跳在 URL 里不会被归一化，
-// 服务器收到后却会解码成 ..，于是能读到（或删掉）备份目录外的文件。先解码再比。
+// 服务器收到后却会解码成 ..，于是能读到（或删掉）备份目录外的文件。先解码再比，
+// 解码失败或出现二次编码、反斜杠一律按失败关门，不回退到原始路径。
 function decodedPath(url) {
-  try {
-    return decodeURIComponent(url.pathname)
-  } catch {
-    return url.pathname
+  const raw = url.pathname
+  if (raw.includes('\\') || /%5c/i.test(raw) || /%25/i.test(raw)) {
+    throw new Error('WebDav 文件地址不在已配置的备份目录中')
   }
+  let decoded
+  try {
+    decoded = decodeURIComponent(raw)
+  } catch {
+    throw new Error('WebDav 文件地址不在已配置的备份目录中')
+  }
+  if (decoded.includes('\\') || /%5c/i.test(decoded)) {
+    throw new Error('WebDav 文件地址不在已配置的备份目录中')
+  }
+  return decoded
 }
 
 // href 来自服务器返回的 PROPFIND 列表，属于外部输入：同源、在备份目录内、不含上跳，缺一不可。
 function webdavFileTarget(config, href) {
   const base = webdavBase(config)
   const directory = new URL(`${WEBDAV_DIRECTORY}/`, base)
-  const target = new URL(href, base)
+  let target
+  try {
+    target = new URL(href, base)
+  } catch {
+    throw new Error('WebDav 文件地址不在已配置的备份目录中')
+  }
   const targetPath = decodedPath(target)
   const outside = target.origin !== base.origin
     || !targetPath.startsWith(decodedPath(directory))
@@ -92,4 +167,4 @@ function webdavHeaders(config, extra = {}) {
   return { Authorization: `Basic ${Buffer.from(`${config.username}:${config.password}`).toString('base64')}`, ...extra }
 }
 
-module.exports = { WEBDAV_DIRECTORY, request, checkedTarget, webdavBase, webdavTarget, webdavFileTarget, webdavHeaders }
+module.exports = { WEBDAV_DIRECTORY, MAX_RESPONSE_BYTES, request, checkedTarget, webdavBase, webdavTarget, webdavFileTarget, webdavHeaders }

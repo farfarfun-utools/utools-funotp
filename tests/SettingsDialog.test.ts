@@ -175,3 +175,38 @@ test('删云端备份要先确认', async () => {
   assert.deepEqual(deleted, ['/dav/FunOTP/new.json'])
   assert.deepEqual(rows(accepted).map(row => row.name), ['old.json', 'broken.json'], '删掉的那行要就地消失')
 })
+
+test('修改 WebDav 配置后点取消不会把未保存的服务器地址带进后续操作', async () => {
+  const hosts: string[] = []
+  const bridge = {
+    webdavBackup: (config: { host: string }) => {
+      hosts.push(config.host)
+      return Promise.resolve()
+    },
+  }
+  const wrapper = await dataTab(setup({ bridge }))
+  await button(wrapper, '配置 WebDav').trigger('click')
+  const urlInput = wrapper.find('input[type="url"]')
+  await urlInput.setValue('https://unsaved.example.com/dav/')
+  await button(wrapper, '取消').trigger('click')
+  await button(wrapper, '备份到 WebDav').trigger('click')
+  await flushPromises()
+
+  assert.deepEqual(hosts, [CONFIG.host])
+})
+
+test('WebDav 列表里包含畸形百分号编码时不会崩溃', async () => {
+  const malformedXml = `<?xml version="1.0" encoding="utf-8"?>
+<d:multistatus xmlns:d="DAV:">
+  <d:response>
+    <d:href>/dav/FunOTP/bad%E0%A4%A.json</d:href>
+    <d:propstat><d:prop><d:getcontentlength>128</d:getcontentlength></d:prop></d:propstat>
+  </d:response>
+</d:multistatus>`
+  const wrapper = await dataTab(setup({ bridge: { webdavList: () => Promise.resolve(malformedXml) } }))
+  await button(wrapper, '从 WebDav 还原').trigger('click')
+  await flushPromises()
+
+  assert.equal(rows(wrapper).length, 1)
+  assert.equal(rows(wrapper)[0].name, 'bad%E0%A4%A.json')
+})

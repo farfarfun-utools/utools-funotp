@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'vitest'
 import { base32Decode, base32Encode, isValidSecret, normalizeSecret } from '../src/lib/base32'
-import { counterAt, counterFor, formatCode, generateOtp, remainingSeconds } from '../src/lib/otp'
+import { clearKeyCache, counterAt, counterBytes, counterFor, evictKeyCache, formatCode, generateOtp, remainingSeconds } from '../src/lib/otp'
 
 const encoder = new TextEncoder()
 // RFC 4226 / 6238 的测试密钥都是这串 ASCII 重复到所需长度。
@@ -110,4 +110,19 @@ test('大写、小写、带空格的同一个密钥算出同一个码', async ()
   const canonical = await generateOtp({ secret: 'JBSWY3DPEHPK3PXP', counter: 7 })
   assert.equal(await generateOtp({ secret: 'jbswy3dpehpk3pxp', counter: 7 }), canonical)
   assert.equal(await generateOtp({ secret: 'JBSW Y3DP-EHPK 3PXP==', counter: 7 }), canonical)
+})
+
+test('小数 HOTP 计数器会被安全截断，不会令 BigInt 崩掉', async () => {
+  assert.equal(counterFor({ secret: SHA1_SEED, type: 'hotp', counter: 3.9 }), 3)
+  assert.equal(counterFor({ secret: SHA1_SEED, type: 'hotp', counter: Number.NaN }), 0)
+  assert.deepEqual(counterBytes(3.9), counterBytes(3))
+  assert.equal(await generateOtp({ secret: SHA1_SEED, counter: 3.9 }), '969429')
+})
+
+test('清理密钥缓存后仍可按需重新算码', async () => {
+  const before = await generateOtp({ secret: SHA1_SEED, counter: 2 })
+  evictKeyCache(SHA1_SEED)
+  assert.equal(await generateOtp({ secret: SHA1_SEED, counter: 2 }), before)
+  clearKeyCache()
+  assert.equal(await generateOtp({ secret: SHA1_SEED, counter: 2 }), before)
 })

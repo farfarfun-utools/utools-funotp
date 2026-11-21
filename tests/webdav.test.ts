@@ -122,3 +122,53 @@ test('认证头是 Basic，额外头能覆盖进去', () => {
   assert.equal(headers.Authorization, `Basic ${Buffer.from('me:pw').toString('base64')}`)
   assert.equal(headers.Depth, '1')
 })
+
+test('webdavBase 清理尾部查询和哈希，且允许局域网 HTTPS', () => {
+  assert.equal(webdavBase({ host: 'https://dav.example.com/dav?token=1#top' }).href, 'https://dav.example.com/dav/')
+  assert.equal(webdavBase({ host: 'https://192.168.1.10:5006/dav' }).href, 'https://192.168.1.10:5006/dav/')
+})
+
+test('webdavFileTarget 对非法转义、二次编码和反斜杠闭门拒绝', () => {
+  const rejected = [
+    '/remote.php/dav/FunOTP/%E0%A4%A/a.json',
+    '/remote.php/dav/FunOTP/%252e%252e/other/a.json',
+    '/remote.php/dav/FunOTP/..\\other\\a.json',
+    '/remote.php/dav/FunOTP/%5c..%5cother.json',
+  ]
+  for (const href of rejected) {
+    assert.throws(() => webdavFileTarget(CONFIG, href), /不在已配置的备份目录中/, href)
+  }
+})
+
+test('PUT 与 DELETE 遇到重定向时直接拒绝', async () => {
+  const origin = await serve((_incoming, response) => {
+    response.writeHead(307, { location: '/FunOTP/moved.json' })
+    response.end()
+  })
+
+  await assert.rejects(request(`${origin}/FunOTP/a.json`, { method: 'PUT', body: '{}' }), /不允许重定向/)
+  await assert.rejects(request(`${origin}/FunOTP/a.json`, { method: 'DELETE' }), /不允许重定向/)
+})
+
+test('畸形重定向 Location 与超大响应体会被安全拒绝', async () => {
+  const badRedirect = await serve((_incoming, response) => {
+    response.writeHead(302, { location: 'http://[::1' })
+    response.end()
+  })
+  await assert.rejects(request(`${badRedirect}/FunOTP/a.json`), /重定向地址无效/)
+
+  const huge = await serve((_incoming, response) => {
+    response.writeHead(200)
+    response.end('x'.repeat(2048))
+  })
+  await assert.rejects(request(`${huge}/FunOTP/a.json`, { maxBytes: 1024 }), /上限/)
+})
+
+test('响应中途中断时 promise 会拒绝', async () => {
+  const abrupt = await serve((_incoming, response) => {
+    response.writeHead(200, { 'Content-Length': '100' })
+    response.write('partial')
+    response.socket?.destroy()
+  })
+  await assert.rejects(request(`${abrupt}/FunOTP/a.json`), /中断|socket|closed|ECONNRESET/i)
+})

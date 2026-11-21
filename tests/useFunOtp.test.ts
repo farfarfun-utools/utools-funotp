@@ -196,7 +196,7 @@ test('TOTP 周期切换时不复制上一周期的缓存码', async () => {
   }
 })
 
-test('保存框点取消时既不提示成功也不落文件', async () => {
+test('保存框点取消时既不提示成功也不落文件，导出备份也要先确认', async () => {
   const saved: string[] = []
   setup({
     stored: storedState([account('a')]),
@@ -207,18 +207,23 @@ test('保存框点取消时既不提示成功也不落文件', async () => {
       },
     },
   })
-  const otp = useFunOtp()
+  const declined = useFunOtp({ confirm: () => Promise.resolve(false) })
+  await settle(declined)
+  await declined.exportBackup()
+  assert.equal(saved.length, 0, '未确认时不该导出明文备份')
+
+  const otp = useFunOtp({ confirm: () => Promise.resolve(true) })
   await settle(otp)
 
-  otp.exportBackup()
+  await otp.exportBackup()
   assert.equal(saved.length, 1, '内容还是生成了，只是用户没要')
   assert.equal(otp.toast.visible, false, '取消不该提示「已导出」')
 
   // 桥抛错（磁盘满、没权限）要把原因显示出来，而不是静默失败。
   setup({ stored: storedState([account('a')]), funotp: { saveBackup: () => { throw new Error('磁盘空间不足') } } })
-  const broken = useFunOtp()
+  const broken = useFunOtp({ confirm: () => Promise.resolve(true) })
   await settle(broken)
-  broken.exportBackup()
+  await broken.exportBackup()
   assert.equal(broken.toast.error, true)
   assert.match(broken.toast.message, /磁盘空间不足/)
 })
@@ -392,4 +397,116 @@ test('读不出本地数据时暂停一切写入', async () => {
   otp.addGroup('工作')
   await settle()
   assert.equal(db.writes, 0, '只读保护期间写一次就会把用户的真实密钥覆盖成空表')
+})
+
+test('registerTool 可安全处理空参数，add-otp 遇到无效链接会明确报错', async () => {
+  const tools = new Map<string, (params?: unknown) => unknown>()
+  let enterCb: ((action: { code: string, type: string, payload: unknown }) => Promise<void> | void) | undefined
+  setup({
+    stored: storedState([account('a', { issuer: 'GitHub', name: 'me' })]),
+    utools: { registerTool: (name: string, fn: (params?: unknown) => unknown) => tools.set(name, fn) },
+    funotp: { onEnter: (cb: typeof enterCb) => { enterCb = cb } },
+  })
+  const otp = useFunOtp()
+  otp.setupUtools({ addAccount: () => {} })
+  await settle(otp)
+
+  const listTool = tools.get('list_otp_accounts')!
+  assert.equal((listTool(undefined) as { total: number }).total, 1)
+  assert.equal((listTool(null) as { total: number }).total, 1)
+
+  await enterCb?.({ code: 'add-otp', type: 'text', payload: 'otpauth://totp/bad?secret=1890!!' })
+  assert.equal(otp.toast.error, true)
+  assert.match(otp.toast.message, /密钥无效|未能识别/)
+})
+
+test('主搜索推送遵守打码与分组设置，但选中时仍复制真实验证码', async () => {
+  const onMainPush = vi.fn()
+  const hideMainWindow = vi.fn()
+  const { copied } = setup({
+    stored: storedState([account('a', { issuer: 'GitHub', name: 'me' })], {
+      settings: { display: { maskCode: true, groupDigits: true } },
+    }),
+    utools: { onMainPush, hideMainWindow },
+  })
+  const otp = useFunOtp()
+  await settle(otp)
+  otp.setupUtools({ addAccount: () => {} })
+
+  const [push, select] = onMainPush.mock.calls[0]
+  const items = push({ payload: 'GitHub' })
+  assert.equal(items.length, 1)
+  assert.equal(items[0].text, '••• •••')
+
+  assert.equal(select({ option: items[0] }), false)
+  assert.match(copied[0], /^\d{6}$/)
+})
+
+test('切换视图只写 localStorage 不写 dbStorage，收到 onDbPull 时重载云端账号', async () => {
+  const local = new Map<string, string>()
+  vi.stubGlobal('localStorage', {
+    getItem: (key: string) => (local.has(key) ? local.get(key)! : null),
+    setItem: (key: string, value: string) => void local.set(key, value),
+    removeItem: (key: string) => void local.delete(key),
+  })
+  let dbPullCb: ((docs: unknown[]) => void) | undefined
+  const { db } = setup({
+    stored: storedState([account('local')]),
+    utools: { onDbPull: (cb: typeof dbPullCb) => { dbPullCb = cb } },
+  })
+  const otp = useFunOtp()
+  otp.setupUtools({ addAccount: () => {} })
+  await settle(otp)
+
+  otp.setView('favorites')
+  await settle()
+  assert.equal(db.writes, 0, '切换视图不该写云端 dbStorage')
+  assert.equal(local.get('funotp-view-v1'), 'favorites')
+
+  db.setItem(STORAGE_KEY, storedState([account('local'), account('synced')]))
+  dbPullCb?.([{ _id: STORAGE_KEY }])
+  await settle(otp)
+  assert.deepEqual(otp.state.value.accounts.map(item => item.id), ['local', 'synced'])
+})
+
+test('写盘失败时各类变更操作回滚且不报成功', async () => {
+  const { db } = setup({
+    stored: storedState(
+      [account('a', { favorite: false, quick: false }), account('b', { deletedAt: Date.now() })],
+      { groups: [{ id: 'g1', name: '工作' }, { id: 'g2', name: '个人' }] },
+    ),
+  })
+  const otp = useFunOtp({ confirm: () => Promise.resolve(true) })
+  await settle(otp)
+  vi.spyOn(db, 'setItem').mockImplementation(() => { throw new Error('disk full') })
+
+  const accA = otp.state.value.accounts[0]
+  const accB = otp.state.value.accounts[1]
+  otp.toggleFavorite(accA)
+  assert.equal(accA.favorite, false)
+  assert.equal(otp.toast.error, true)
+
+  otp.toggleQuick(accA)
+  assert.equal(accA.quick, false)
+
+  otp.moveToTrash(accA)
+  assert.equal(accA.deletedAt, null)
+
+  otp.restoreAccount(accB)
+  assert.ok(accB.deletedAt)
+
+  await otp.deleteAccount(accA)
+  assert.equal(otp.state.value.accounts.length, 2)
+
+  await otp.emptyTrash()
+  assert.equal(otp.state.value.accounts.length, 2)
+
+  otp.addGroup('新分组')
+  assert.equal(otp.state.value.groups.length, 2)
+
+  await otp.groupAction('g1', 'rename', '改名')
+  assert.equal(otp.state.value.groups[0].name, '工作')
+
+  otp.cycleTheme()
+  assert.equal(otp.state.value.theme, 'system')
 })

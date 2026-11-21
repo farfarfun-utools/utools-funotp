@@ -100,3 +100,32 @@ test('迁移链接也能混在普通文本里被解析', () => {
   assert.throws(() => parseMigrationUri('otpauth-migration://offline?nodata=1'), /缺少 data/)
   assert.throws(() => parseMigrationUri('otpauth://totp/a?secret=JBSWY3DPEHPK3PXP'), /不是 otpauth-migration/)
 })
+
+test('迁移链接里畸形 URL、坏 base64、截断定长字段与超大计数器都会被安全处理', () => {
+  assert.throws(() => parseMigrationUri('otpauth-migration://[::1'), /格式不正确/)
+  assert.throws(() => parseMigrationUri('otpauth-migration://offline?data=***not-base64***'), /已损坏/)
+
+  // wire=5 (32-bit fixed) 仅剩 2 字节、wire=1 (64-bit fixed) 仅剩 4 字节都必须按损坏拒绝。
+  const badFixed32 = Buffer.from([0x0d, 0x01, 0x02]).toString('base64')
+  const badFixed64 = Buffer.from([0x09, 0x01, 0x02, 0x03, 0x04]).toString('base64')
+  assert.throws(() => parseMigrationUri(`otpauth-migration://offline?data=${encodeURIComponent(badFixed32)}`), /已损坏/)
+  assert.throws(() => parseMigrationUri(`otpauth-migration://offline?data=${encodeURIComponent(badFixed64)}`), /已损坏/)
+
+  // 超过 MAX_SAFE_INTEGER 的 64 位 HOTP counter 应夹到安全整数上限。
+  const secret = Uint8Array.from([0x48, 0x65, 0x6c, 0x6c, 0x6f])
+  const hugeCounter = [0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f]
+  const entry = [
+    0x0a, secret.length, ...secret,
+    0x12, 2, 0x6d, 0x65,
+    0x30, 1, // type = hotp
+    0x38, ...hugeCounter, // field 7 = counter
+  ]
+  const payload = Uint8Array.from([0x0a, entry.length, ...entry])
+  const data = Buffer.from(payload).toString('base64')
+  const accounts = parseMigrationUri(`otpauth-migration://offline?data=${encodeURIComponent(data)}`)
+  assert.equal(accounts.length, 1)
+  assert.equal(accounts[0].counter, Number.MAX_SAFE_INTEGER)
+
+  // otpauth:// 小数 counter 也要截断为整数。
+  assert.equal(parseOtpauthUri('otpauth://hotp/Acme:me?secret=JBSWY3DPEHPK3PXP&counter=7.9').counter, 7)
+})

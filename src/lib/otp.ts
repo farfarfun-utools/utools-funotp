@@ -28,7 +28,10 @@ const STEAM_DIGITS = 5
  */
 export function counterBytes(counter: number | bigint): Uint8Array<ArrayBuffer> {
   const bytes = new Uint8Array(8)
-  let value = BigInt(counter)
+  const normalized = typeof counter === 'number'
+    ? (Number.isFinite(counter) ? Math.max(0, Math.trunc(counter)) : 0)
+    : (counter > 0n ? counter : 0n)
+  let value = BigInt(normalized)
   for (let index = 7; index >= 0 && value > 0n; index -= 1) {
     bytes[index] = Number(value & 0xffn)
     value >>= 8n
@@ -53,6 +56,22 @@ export function truncate(digest: Uint8Array): number {
 // 缓存的是不可导出的 CryptoKey，和内存里本来就有的明文密钥相比没有额外暴露。
 const keyCache = new Map<string, Promise<CryptoKey>>()
 const KEY_CACHE_LIMIT = 128
+
+/** 从内存密钥缓存中清除指定密钥对应的 CryptoKey。
+ * @param secret 待清除的 Base32 密钥。
+ */
+export function evictKeyCache(secret?: string): void {
+  if (!secret) return
+  const normalized = normalizeSecret(secret)
+  for (const hash of Object.values(ALGORITHMS)) {
+    keyCache.delete(`${hash}|${normalized}`)
+  }
+}
+
+/** 清空内存中的所有 CryptoKey 缓存。 */
+export function clearKeyCache(): void {
+  keyCache.clear()
+}
 
 function hmacKey(hash: string, secret: string): Promise<CryptoKey> {
   const cacheKey = `${hash}|${secret}`
@@ -144,7 +163,9 @@ export function remainingSeconds(timestamp: number, period: unknown = DEFAULT_PE
  * @returns 计数器值。
  */
 export function counterFor(account: OtpAccount, timestamp: number = Date.now()): number {
-  return account.type === 'hotp' ? Math.max(0, Number(account.counter) || 0) : counterAt(timestamp, account.period)
+  if (account.type !== 'hotp') return counterAt(timestamp, account.period)
+  const raw = Number(account.counter)
+  return Number.isFinite(raw) ? Math.max(0, Math.trunc(raw)) : 0
 }
 
 // 显示成 123 456 / 1234 5678 比一长串数字好认。

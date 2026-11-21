@@ -33,8 +33,34 @@ const FS_REASONS = {
   EMFILE: '系统打开的文件过多',
 }
 
+const MAX_FILE_BYTES = 16 * 1024 * 1024
+
 function fsError(action, error) {
   return new Error(`${action}：${FS_REASONS[error?.code] || error?.message || '未知错误'}`)
+}
+
+function assertFileWithinLimit(file, action) {
+  let stat
+  try {
+    stat = fs.statSync(file)
+  } catch (error) {
+    throw fsError(action, error)
+  }
+  if (!stat.isFile()) throw new Error(`${action}：目标不是有效文件`)
+  if (stat.size > MAX_FILE_BYTES) throw new Error(`${action}：文件超过 16 MB 上限`)
+}
+
+function backupStamp(now = new Date()) {
+  const pad = (value, width = 2) => String(value).padStart(width, '0')
+  return [
+    now.getFullYear(),
+    pad(now.getMonth() + 1),
+    pad(now.getDate()),
+    pad(now.getHours()),
+    pad(now.getMinutes()),
+    pad(now.getSeconds()),
+    pad(now.getMilliseconds(), 3),
+  ].join('-')
 }
 
 window.funotp = {
@@ -60,8 +86,10 @@ window.funotp = {
   chooseTextFile(extensions) {
     const result = utools.showOpenDialog({ properties: ['openFile'], filters: [{ name: '数据文件', extensions }] })
     if (!result?.[0]) return null
+    const file = path.resolve(result[0])
+    assertFileWithinLimit(file, '无法读取所选文件')
     try {
-      return fs.readFileSync(path.resolve(result[0]), 'utf8')
+      return fs.readFileSync(file, 'utf8')
     } catch (error) {
       throw fsError('无法读取所选文件', error)
     }
@@ -74,6 +102,7 @@ window.funotp = {
     })
     if (!result?.[0]) return null
     const file = path.resolve(result[0])
+    assertFileWithinLimit(file, '无法读取所选图片')
     const type = IMAGE_TYPES[path.extname(file).toLowerCase()] || 'image/png'
     try {
       return `data:${type};base64,${fs.readFileSync(file).toString('base64')}`
@@ -83,8 +112,7 @@ window.funotp = {
   },
   async webdavBackup(config, content) {
     await request(webdavTarget(config), { method: 'MKCOL', headers: webdavHeaders(config) })
-    const now = new Date()
-    const stamp = [now.getFullYear(), now.getMonth() + 1, now.getDate(), now.getHours(), now.getMinutes(), now.getSeconds()].join('-')
+    const stamp = backupStamp()
     await request(webdavTarget(config, `${stamp}.json`), {
       method: 'PUT',
       headers: webdavHeaders(config, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(content) }),

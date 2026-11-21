@@ -2,7 +2,7 @@ import { computed, getCurrentInstance, onBeforeUnmount, reactive, ref, watch } f
 import { accountKey, accountLabel, accountMatches, createId, moveItem, normalizeAccount } from '../lib/core'
 import type { CodeView, ConfirmOptions, StoredAccount } from '../lib/core'
 import { quickFeatureAccountId, quickFeatureCode } from '../lib/features'
-import { counterFor, formatCode, generateOtp, remainingSeconds } from '../lib/otp'
+import { clearKeyCache, counterFor, evictKeyCache, formatCode, generateOtp, remainingSeconds } from '../lib/otp'
 import { buildOtpauthUri, parseOtpauthText } from '../lib/otpauth'
 import { STORAGE_KEY, groupIdOf, loadState, nextIndex, prepareState } from '../lib/state'
 import { readStorage, writeStorage } from '../lib/storage'
@@ -12,6 +12,30 @@ import { listOtpAccounts } from '../lib/ai-tools'
 // 起点对齐到整秒，周期边界一到就能立刻翻新。
 const TICK_MS = 1000
 const PANEL_HEIGHT = 558
+const VIEW_STORAGE_KEY = 'funotp-view-v1'
+
+function readLocalView(): string | null {
+  try {
+    return typeof localStorage !== 'undefined' ? localStorage.getItem(VIEW_STORAGE_KEY) : null
+  } catch {
+    return null
+  }
+}
+
+function writeLocalView(view: string) {
+  try {
+    if (typeof localStorage !== 'undefined') localStorage.setItem(VIEW_STORAGE_KEY, view)
+  } catch {
+    // 忽略局部界面偏好写入失败，不影响密钥数据。
+  }
+}
+
+function resolveView(view: string | null, groups: { id: string }[], fallback: string): string {
+  const candidate = view || fallback || 'all'
+  const groupId = groupIdOf(candidate)
+  if (groupId && !groups.some(group => group.id === groupId)) return 'all'
+  return candidate
+}
 
 // localeCompare 每次调用都要解析一遍 locale，比较器复用一个就够。
 const collator = new Intl.Collator('zh-Hans-CN')
@@ -38,6 +62,7 @@ function fallbackConfirm(options: ConfirmOptions): Promise<boolean> {
  */
 export function useFunOtp({ confirm = fallbackConfirm }: { confirm?: (options: ConfirmOptions) => Promise<boolean> } = {}) {
   const loaded = loadState({ read: readStorage })
+  loaded.state.currentView = resolveView(readLocalView(), loaded.state.groups, loaded.state.currentView)
   const state = ref(loaded.state)
   const storageError = ref(loaded.blocked)
   const search = ref('')
@@ -48,10 +73,10 @@ export function useFunOtp({ confirm = fallbackConfirm }: { confirm?: (options: C
   let toastTimer
   let timer: ReturnType<typeof setInterval> | undefined
   let alignTimer: ReturnType<typeof setTimeout> | undefined
-  let viewSaveTimer: ReturnType<typeof setTimeout> | undefined
   let refreshChain = Promise.resolve()
   let queued = false
   let dirty = false
+  let ignoreDirty = false
   const pending = new Map()
 
   const groups = computed(() => state.value.groups)
@@ -132,7 +157,7 @@ export function useFunOtp({ confirm = fallbackConfirm }: { confirm?: (options: C
   // 但「一次都没动过」也整条文档写一遍就是白写（dbStorage 要落盘，还会触发一次云同步）。
   // 用脏标记区分。flush 必须是 sync：默认的异步时机会排在下面的 saveState 之后，
   // 刚清掉的标记又会被这次改动重新立起来。
-  watch(state, () => { dirty = true }, { deep: true, flush: 'sync' })
+  watch(state, () => { if (!ignoreDirty) dirty = true }, { deep: true, flush: 'sync' })
 
   // 写失败（超出 dbStorage 单文档上限、磁盘异常）必须让用户看见，
   // 否则改动只留在内存里，下次进插件就全没了。
@@ -152,21 +177,9 @@ export function useFunOtp({ confirm = fallbackConfirm }: { confirm?: (options: C
     }
   }
 
-  // 只给纯界面状态用（当前分组之类）：点一下导航就整条写一次库没必要，丢了也不影响密钥。
-  // 账号本身的改动一律立刻落盘，不进这个队列。
-  function saveViewSoon() {
-    clearTimeout(viewSaveTimer)
-    viewSaveTimer = setTimeout(() => {
-      viewSaveTimer = undefined
-      saveState()
-    }, 400)
-  }
-
-  // 插件退出时补上没落盘的改动：还没到期的防抖写入，以及设置抽屉那种直接改 state、
+  // 插件退出时补上没落盘的改动：设置抽屉那种直接改 state、
   // 等关闭时才保存的路径——用户改完设置就把插件收起来的话，不写这一次就白改了。
   function flushSaves() {
-    clearTimeout(viewSaveTimer)
-    viewSaveTimer = undefined
     if (dirty) saveState()
   }
 
@@ -353,8 +366,16 @@ export function useFunOtp({ confirm = fallbackConfirm }: { confirm?: (options: C
   }
 
   function toggleFavorite(account) {
-    account.favorite = !account.favorite
-    saveState()
+    if (storageError.value) return void showToast(storageError.value, true)
+    const previous = account.favorite
+    account.favorite = !previous
+    if (!saveState()) {
+      ignoreDirty = true
+      account.favorite = previous
+      ignoreDirty = false
+      dirty = false
+      return
+    }
     showToast(account.favorite ? '已加入常用' : '已取消常用')
   }
 
@@ -386,28 +407,55 @@ export function useFunOtp({ confirm = fallbackConfirm }: { confirm?: (options: C
   }
 
   function toggleQuick(account) {
-    account.quick = !account.quick
+    if (storageError.value) return void showToast(storageError.value, true)
+    const previous = account.quick
+    account.quick = !previous
+    if (!saveState()) {
+      ignoreDirty = true
+      account.quick = previous
+      ignoreDirty = false
+      dirty = false
+      return
+    }
     syncQuickFeature(account)
-    saveState()
     showToast(account.quick ? '已添加到 uTools 关键字' : '已移除 uTools 关键字')
   }
 
   function moveToTrash(account) {
+    if (storageError.value) return void showToast(storageError.value, true)
+    const previousDeletedAt = account.deletedAt
+    const previousQuick = account.quick
     account.deletedAt = Date.now()
     account.quick = false
+    if (!saveState()) {
+      ignoreDirty = true
+      account.deletedAt = previousDeletedAt
+      account.quick = previousQuick
+      ignoreDirty = false
+      dirty = false
+      return
+    }
     syncQuickFeature(account)
-    saveState()
     showToast('已移到废纸篓，可在废纸篓里恢复')
   }
 
   function restoreAccount(account) {
+    if (storageError.value) return void showToast(storageError.value, true)
+    const previousDeletedAt = account.deletedAt
     account.deletedAt = null
-    saveState()
+    if (!saveState()) {
+      ignoreDirty = true
+      account.deletedAt = previousDeletedAt
+      ignoreDirty = false
+      dirty = false
+      return
+    }
     refreshCodes()
     showToast('账号已恢复')
   }
 
   async function deleteAccount(account) {
+    if (storageError.value) return void showToast(storageError.value, true)
     const ok = await confirm({
       message: `永久删除「${accountLabel(account)}」？`,
       detail: '密钥一旦删除无法找回，请确认已在该网站关闭两步验证或已有其他备份。',
@@ -415,14 +463,16 @@ export function useFunOtp({ confirm = fallbackConfirm }: { confirm?: (options: C
       danger: true,
     })
     if (!ok) return
-    state.value.accounts = state.value.accounts.filter(item => item.id !== account.id)
+    const nextAccounts = state.value.accounts.filter(item => item.id !== account.id)
+    if (!saveState({ ...state.value, accounts: nextAccounts })) return
     delete codes[account.id]
+    evictKeyCache(account.secret)
     window.utools?.removeFeature?.(quickFeatureCode(account.id))
-    saveState()
     showToast('账号已永久删除')
   }
 
   async function emptyTrash() {
+    if (storageError.value) return void showToast(storageError.value, true)
     const deleted = state.value.accounts.filter(account => account.deletedAt)
     if (!deleted.length) return showToast('废纸篓已经是空的')
     const ok = await confirm({
@@ -432,22 +482,29 @@ export function useFunOtp({ confirm = fallbackConfirm }: { confirm?: (options: C
       danger: true,
     })
     if (!ok) return
-    deleted.forEach(account => delete codes[account.id])
-    state.value.accounts = state.value.accounts.filter(account => !account.deletedAt)
-    saveState()
+    const remaining = state.value.accounts.filter(account => !account.deletedAt)
+    if (!saveState({ ...state.value, accounts: remaining })) return
+    deleted.forEach(account => {
+      delete codes[account.id]
+      evictKeyCache(account.secret)
+      window.utools?.removeFeature?.(quickFeatureCode(account.id))
+    })
     showToast('废纸篓已清空')
   }
 
   function reorderAccounts(sourceId, targetId) {
+    if (storageError.value) return void showToast(storageError.value, true)
     if (state.value.settings.display.sort !== 'manual') return showToast('当前是自动排序，拖动不生效', true)
-    state.value.accounts = moveItem(state.value.accounts, sourceId, targetId)
-    saveState()
+    const nextAccounts = moveItem(state.value.accounts, sourceId, targetId)
+    saveState({ ...state.value, accounts: nextAccounts })
   }
 
   function setView(view) {
+    ignoreDirty = true
     state.value.currentView = view
+    ignoreDirty = false
     search.value = ''
-    saveViewSoon()
+    writeLocalView(view)
   }
 
   function groupCount(groupId: string) {
@@ -455,17 +512,25 @@ export function useFunOtp({ confirm = fallbackConfirm }: { confirm?: (options: C
   }
 
   function addGroup(name) {
+    if (storageError.value) return void showToast(storageError.value, true)
     const trimmed = String(name || '').trim()
     if (!trimmed) return
-    state.value.groups.push({ id: createId('group'), name: trimmed })
-    saveState()
+    const nextGroups = [...state.value.groups, { id: createId('group'), name: trimmed }]
+    saveState({ ...state.value, groups: nextGroups })
   }
 
   async function groupAction(id, action, value) {
+    if (storageError.value) return void showToast(storageError.value, true)
     const group = state.value.groups.find(item => item.id === id)
     if (!group) return
-    if (action === 'rename' && String(value || '').trim()) group.name = String(value).trim()
-    if (action === 'delete') {
+    let nextGroups = state.value.groups
+    let nextAccounts = state.value.accounts
+    let nextView = state.value.currentView
+    if (action === 'rename') {
+      const trimmed = String(value || '').trim()
+      if (!trimmed) return
+      nextGroups = state.value.groups.map(item => item.id === id ? { ...item, name: trimmed } : item)
+    } else if (action === 'delete') {
       // value === true 是调用方已经确认过了的意思（比如从备份恢复时的清理），不再问第二遍。
       const ok = value === true || await confirm({
         message: `删除分组「${group.name}」？`,
@@ -474,19 +539,25 @@ export function useFunOtp({ confirm = fallbackConfirm }: { confirm?: (options: C
         danger: true,
       })
       if (!ok) return
-      state.value.groups = state.value.groups.filter(item => item.id !== id)
-      state.value.accounts.forEach(account => { account.groupIds = account.groupIds.filter(groupId => groupId !== id) })
-      if (activeGroupId.value === id) state.value.currentView = 'all'
-    }
-    if (action === 'up' || action === 'down') {
+      nextGroups = state.value.groups.filter(item => item.id !== id)
+      nextAccounts = state.value.accounts.map(account => ({
+        ...account,
+        groupIds: account.groupIds.filter(groupId => groupId !== id),
+      }))
+      if (activeGroupId.value === id) nextView = 'all'
+    } else if (action === 'up' || action === 'down') {
       const index = state.value.groups.indexOf(group)
       const target = index + (action === 'up' ? -1 : 1)
-      if (target >= 0 && target < state.value.groups.length) {
-        state.value.groups[index] = state.value.groups[target]
-        state.value.groups[target] = group
-      }
+      if (target < 0 || target >= state.value.groups.length) return
+      nextGroups = state.value.groups.slice()
+      nextGroups[index] = nextGroups[target]
+      nextGroups[target] = group
+    } else {
+      return
     }
-    saveState()
+    const viewChanged = nextView !== state.value.currentView
+    if (!saveState({ ...state.value, groups: nextGroups, accounts: nextAccounts, currentView: nextView })) return
+    if (viewChanged) writeLocalView(nextView)
   }
 
   function applyTheme() {
@@ -494,11 +565,12 @@ export function useFunOtp({ confirm = fallbackConfirm }: { confirm?: (options: C
   }
 
   function cycleTheme() {
+    if (storageError.value) return void showToast(storageError.value, true)
     const order = ['system', 'light', 'dark']
-    state.value.theme = order[(order.indexOf(state.value.theme) + 1) % order.length]
-    saveState()
+    const nextTheme = order[(order.indexOf(state.value.theme) + 1) % order.length]
+    if (!saveState({ ...state.value, theme: nextTheme })) return
     applyTheme()
-    showToast({ system: '跟随系统主题', light: '已切换浅色主题', dark: '已切换深色主题' }[state.value.theme])
+    showToast({ system: '跟随系统主题', light: '已切换浅色主题', dark: '已切换深色主题' }[nextTheme])
   }
 
   function saveSettings() {
@@ -535,7 +607,14 @@ export function useFunOtp({ confirm = fallbackConfirm }: { confirm?: (options: C
     }
   }
 
-  function exportBackup() {
+  async function exportBackup() {
+    const ok = await confirm({
+      message: '导出明文备份文件？',
+      detail: '备份文件包含所有账号的明文密钥，任何拿到它的人都能生成你的验证码。',
+      confirmText: '确认导出',
+      danger: true,
+    })
+    if (!ok) return
     exportFile(backupContent(), stamped('funotp', 'json'), 'application/json', '备份已导出，请妥善保管', '备份导出失败')
   }
 
@@ -617,7 +696,7 @@ export function useFunOtp({ confirm = fallbackConfirm }: { confirm?: (options: C
   }
 
   function setupUtools({ addAccount }) {
-    window.utools?.registerTool?.('list_otp_accounts', ({ keyword }) => listOtpAccounts(state.value, keyword))
+    window.utools?.registerTool?.('list_otp_accounts', params => listOtpAccounts(state.value, params?.keyword))
     setPanelHeight()
     window.utools?.setSubInput?.(({ text }) => { search.value = text || '' }, '搜索账号', true)
     state.value.accounts.forEach(syncQuickFeature)
@@ -625,6 +704,27 @@ export function useFunOtp({ confirm = fallbackConfirm }: { confirm?: (options: C
 
     // outPlugin 不传 isKill 时插件只是隐藏到后台、进程还在跑，定时器不停就是白烧 CPU。
     window.utools?.onPluginOut?.(() => stopTicking())
+
+    // 另一台设备同步新账号过来时重新读取 dbStorage，避免继续展示旧缓存或覆盖云端数据。
+    window.utools?.onDbPull?.(() => {
+      const pulled = loadState({ read: readStorage })
+      if (pulled.blocked) {
+        storageError.value = pulled.blocked
+        return
+      }
+      pulled.state.currentView = resolveView(state.value.currentView, pulled.state.groups, pulled.state.currentView)
+      ignoreDirty = true
+      state.value = pulled.state
+      ignoreDirty = false
+      storageError.value = ''
+      dirty = false
+      clearKeyCache()
+      for (const key of Object.keys(codes)) delete codes[key]
+      applyTheme()
+      state.value.accounts.forEach(syncQuickFeature)
+      pruneQuickFeatures()
+      void refreshCodes()
+    })
 
     window.funotp?.onEnter(async action => {
       setPanelHeight()
@@ -642,11 +742,13 @@ export function useFunOtp({ confirm = fallbackConfirm }: { confirm?: (options: C
         return
       }
       if (action.code === 'add-otp') {
-        const { accounts } = parseOtpauthText(String(action.payload || ''))
+        const { accounts, errors } = parseOtpauthText(String(action.payload || ''))
         if (accounts.length === 1) addAccount(accounts[0])
         else if (accounts.length > 1) {
           const added = importAccounts(accounts)
-          if (added) showToast(`已导入 ${added.length} 个账号`)
+          if (added) showToast(`已导入 ${added.length} 个账号${errors.length ? `，${errors.length} 条无法识别` : ''}`)
+        } else {
+          showToast(errors[0] || '未能识别有效的 otpauth 链接', true)
         }
         return
       }
@@ -670,12 +772,17 @@ export function useFunOtp({ confirm = fallbackConfirm }: { confirm?: (options: C
       // 插件刚被后台唤起时定时器是停着的，这里补一次对时，并点名算这几条——它们不在当前视图里，
       // 指望不上只算可见卡片的 refreshCodes。下一次按键就能显示出来。
       ensureCodes(matched)
-      return matched.map(account => ({
-        icon: 'logo.png',
-        text: formatCode(codeOf(account).code, true) || '计算中…',
-        title: accountLabel(account),
-        accountId: account.id,
-      }))
+      const { maskCode, groupDigits } = state.value.settings.display
+      return matched.map(account => {
+        const raw = codeOf(account).code
+        const formatted = formatCode(raw, groupDigits)
+        return {
+          icon: 'logo.png',
+          text: formatted ? (maskCode ? formatted.replace(/[^\s]/g, '•') : formatted) : '计算中…',
+          title: accountLabel(account),
+          accountId: account.id,
+        }
+      })
     },
     // onSelect 必须同步返回 boolean：写成 async 返回的是 Promise，uTools 判断不出该不该进插件，
     // 而且复制会发生在回调返回之后。返回 false = 复制完留在主搜索框，不进插件界面。

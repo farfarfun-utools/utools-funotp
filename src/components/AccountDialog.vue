@@ -65,7 +65,18 @@ function open(account = null) {
 }
 
 function close() {
+  draft.secret = ''
+  uriText.value = ''
+  preview.value = ''
+  showSecret.value = false
   dialog.value?.close()
+}
+
+function handleNativeClose() {
+  draft.secret = ''
+  uriText.value = ''
+  preview.value = ''
+  showSecret.value = false
 }
 
 // 密钥填对了就能立刻看到验证码，比保存后再回来看省事，也顺手验证了密钥。
@@ -178,7 +189,7 @@ defineExpose({ open, close, saveError })
 </script>
 
 <template>
-  <dialog ref="dialog" class="otp-dialog" aria-labelledby="account-dialog-title" @cancel.prevent="close">
+  <dialog ref="dialog" class="otp-dialog" aria-labelledby="account-dialog-title" @cancel.prevent="close" @close="handleNativeClose">
     <form @submit.prevent="submit">
       <header class="otp-dialog-header">
         <span class="otp-dialog-avatar" :style="{ backgroundColor: safeColor(draft.color) }">{{ avatarText }}</span>
@@ -316,7 +327,7 @@ defineExpose({ open, close, saveError })
             <div class="form-row">
               <label><span>位数</span><input v-model.number="draft.digits" type="number" min="4" max="10" /></label>
               <label v-if="draft.type === 'totp'"><span>周期（秒）</span><input v-model.number="draft.period" type="number" min="1" max="3600" /></label>
-              <label v-else><span>计数器</span><input v-model.number="draft.counter" type="number" min="0" /></label>
+              <label v-else><span>计数器</span><input v-model.number="draft.counter" type="number" min="0" step="1" /></label>
             </div>
             <label class="check-line">
               <input v-model="draft.encoding" type="checkbox" true-value="steam" false-value="standard" />

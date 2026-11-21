@@ -24,6 +24,7 @@ const activeTab = ref('display')
 const importGroupId = ref('')
 const snapshot = ref('')
 const webdav = reactive({ host: '', username: '', password: '' })
+const webdavDraft = reactive({ host: '', username: '', password: '' })
 const webdavLoading = ref(false)
 const webdavFiles = ref([])
 
@@ -77,19 +78,29 @@ function webdavConfig() {
 }
 
 function openWebdav() {
-  Object.assign(webdav, EMPTY_WEBDAV, readStorage('funotp-webdav', EMPTY_WEBDAV))
+  Object.assign(webdavDraft, EMPTY_WEBDAV, readStorage('funotp-webdav', EMPTY_WEBDAV))
   webdavDialog.value.showModal()
 }
 
 function saveWebdav() {
+  const next = { ...toRaw(webdavDraft) }
   try {
-    writeStorage('funotp-webdav', webdavConfig())
+    writeStorage('funotp-webdav', next)
   } catch (error) {
     // 整个 dbStorage 坏掉时这里也会抛，不接住的话配置看起来保存成功了，实际没落盘。
     return emit('message', `WebDav 配置保存失败：${error.message}`, true)
   }
+  Object.assign(webdav, next)
   webdavDialog.value.close()
   emit('message', 'WebDav 配置已保存')
+}
+
+function safeDecode(text: string): string {
+  try {
+    return decodeURIComponent(text)
+  } catch {
+    return text
+  }
 }
 
 function parseWebdavList(xml) {
@@ -102,12 +113,12 @@ function parseWebdavList(xml) {
   return [...parsed.getElementsByTagNameNS('*', 'response')].flatMap(response => {
     const value = name => response.getElementsByTagNameNS('*', name)[0]?.textContent || ''
     const href = value('href')
-    if (!decodeURIComponent(href).endsWith('.json')) return []
+    if (!safeDecode(href).endsWith('.json')) return []
     // 服务器给的日期不一定能解析，解析不出来就按最旧处理，别让 NaN 把排序搅乱。
     const modified = Date.parse(value('getlastmodified'))
     return [{
       href,
-      name: value('displayname') || decodeURIComponent(href.split('/').pop()),
+      name: value('displayname') || safeDecode(href.split('/').pop() || ''),
       size: Number(value('getcontentlength') || 0),
       modifiedAt: Number.isNaN(modified) ? 0 : modified,
     }]
@@ -115,9 +126,7 @@ function parseWebdavList(xml) {
 }
 
 async function webdavAction(action) {
-  if (!webdav.host || !webdav.username || !webdav.password) {
-    Object.assign(webdav, readStorage('funotp-webdav', webdavConfig()))
-  }
+  Object.assign(webdav, EMPTY_WEBDAV, readStorage('funotp-webdav', EMPTY_WEBDAV))
   if (!webdav.host || !webdav.username || !webdav.password) return emit('message', '请先配置 WebDav', true)
   if (!window.funotp?.webdavBackup) return emit('message', '当前环境不支持 WebDav', true)
   webdavLoading.value = true
@@ -320,10 +329,10 @@ defineExpose({ open, close })
   <dialog ref="webdavDialog" class="sub-modal">
     <form method="dialog" @submit.prevent="saveWebdav">
       <header><h2>WebDav 配置</h2><button type="button" aria-label="关闭" @click="webdavDialog.close()">×</button></header>
-      <p class="data-help">备份是<b class="danger-text">明文密钥</b>，只支持 <b>https://</b> 地址，请使用可信的服务器。</p>
-      <label><span>服务器</span><input v-model="webdav.host" type="url" pattern="https://.*" placeholder="https://dav.example.com/dav/" required /></label>
-      <label><span>用户名</span><input v-model="webdav.username" autocomplete="off" required /></label>
-      <label><span>密 码</span><input v-model="webdav.password" type="password" autocomplete="off" required /></label>
+      <p class="data-help">备份是<b class="danger-text">明文密钥</b>，只支持 <b>https://</b> 地址，请使用可信的服务器。配置保存在 uTools <b>dbStorage</b> 中，开启云同步时会随账号同步到你的其他设备。</p>
+      <label><span>服务器</span><input v-model="webdavDraft.host" type="url" pattern="https://.*" placeholder="https://dav.example.com/dav/" required /></label>
+      <label><span>用户名</span><input v-model="webdavDraft.username" autocomplete="off" required /></label>
+      <label><span>密 码</span><input v-model="webdavDraft.password" type="password" autocomplete="off" required /></label>
       <footer><button type="button" class="button" @click="webdavDialog.close()">取消</button><button type="submit" class="button primary">保存</button></footer>
     </form>
   </dialog>

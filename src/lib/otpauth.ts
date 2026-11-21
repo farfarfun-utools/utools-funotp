@@ -45,6 +45,11 @@ export function parseOtpauthUri(uri: unknown): Account {
   const secret = normalizeSecret(url.searchParams.get('secret'))
   if (!isValidSecret(secret)) throw new Error('链接里的密钥无效')
 
+  const rawCounter = Number(url.searchParams.get('counter'))
+  const counter = type === 'hotp' && Number.isFinite(rawCounter)
+    ? Math.max(0, Math.min(Number.MAX_SAFE_INTEGER, Math.trunc(rawCounter)))
+    : 0
+
   const issuer = (url.searchParams.get('issuer') || fromLabel.issuer || '').trim()
   return {
     type,
@@ -56,7 +61,7 @@ export function parseOtpauthUri(uri: unknown): Account {
     algorithm: pickAlgorithm(url.searchParams.get('algorithm')),
     digits: normalizeDigits(url.searchParams.get('digits') || DEFAULT_DIGITS),
     period: normalizePeriod(url.searchParams.get('period') || DEFAULT_PERIOD),
-    counter: type === 'hotp' ? Math.max(0, Number(url.searchParams.get('counter')) || 0) : 0,
+    counter,
     encoding: String(url.searchParams.get('encoding') || '').toLowerCase() === 'steam' ? 'steam' : 'standard',
   }
 }
@@ -114,9 +119,13 @@ function readFields(bytes: Uint8Array): WireField[] {
       if (length < 0 || cursor.index + length > bytes.length) throw new Error('迁移数据已损坏')
       fields.push({ field, bytes: bytes.subarray(cursor.index, cursor.index + length) })
       cursor.index += length
-    } else if (wire === 5) cursor.index += 4
-    else if (wire === 1) cursor.index += 8
-    else throw new Error('迁移数据已损坏')
+    } else if (wire === 5) {
+      if (cursor.index + 4 > bytes.length) throw new Error('迁移数据已损坏')
+      cursor.index += 4
+    } else if (wire === 1) {
+      if (cursor.index + 8 > bytes.length) throw new Error('迁移数据已损坏')
+      cursor.index += 8
+    } else throw new Error('迁移数据已损坏')
   }
   return fields
 }
@@ -124,8 +133,20 @@ function readFields(bytes: Uint8Array): WireField[] {
 function decodeBase64(value: unknown) {
   const normalized = String(value).replace(/-/g, '+').replace(/_/g, '/')
   const padded = normalized + '='.repeat((4 - normalized.length % 4) % 4)
-  const binary = atob(padded)
+  let binary: string
+  try {
+    binary = atob(padded)
+  } catch {
+    throw new Error('迁移数据已损坏')
+  }
   return Uint8Array.from(binary, char => char.charCodeAt(0))
+}
+
+const MAX_SAFE_COUNTER = BigInt(Number.MAX_SAFE_INTEGER)
+
+function clampMigrationCounter(value: bigint | undefined): number {
+  if (value === undefined || value <= 0n) return 0
+  return Number(value > MAX_SAFE_COUNTER ? MAX_SAFE_COUNTER : value)
 }
 
 // protobuf 里算法和位数是枚举下标，越界的值按默认值处理，所以这里按下标取。
@@ -141,7 +162,13 @@ const MIGRATION_DIGITS: Record<number, number> = { 1: 6, 2: 8 }
 export function parseMigrationUri(uri: unknown): Account[] {
   const input = String(uri || '').trim()
   if (!/^otpauth-migration:\/\//i.test(input)) throw new Error('不是 otpauth-migration:// 链接')
-  const data = new URL(input).searchParams.get('data')
+  let url: URL
+  try {
+    url = new URL(input)
+  } catch {
+    throw new Error('迁移链接格式不正确')
+  }
+  const data = url.searchParams.get('data')
   if (!data) throw new Error('迁移链接缺少 data 参数')
 
   const text = new TextDecoder()
@@ -165,7 +192,7 @@ export function parseMigrationUri(uri: unknown): Account[] {
         algorithm: MIGRATION_ALGORITHMS[Number(parameters.get(4)?.value ?? 1n)] || 'SHA1',
         digits: MIGRATION_DIGITS[Number(parameters.get(5)?.value ?? 1n)] || DEFAULT_DIGITS,
         period: DEFAULT_PERIOD,
-        counter: type === 'hotp' ? Number(parameters.get(7)?.value ?? 0n) : 0,
+        counter: type === 'hotp' ? clampMigrationCounter(parameters.get(7)?.value) : 0,
         encoding: 'standard',
       }]
     })

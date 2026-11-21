@@ -50,7 +50,7 @@ interface UToolsDbStorage {
 }
 
 interface UToolsApi {
-  registerTool?: (name: string, handler: (params: Record<string, unknown>) => unknown) => void
+  registerTool?: (name: string, handler: (params?: Record<string, unknown> | null) => unknown) => void
   copyText?: (text: string) => boolean
 
   hideMainWindow?: (isFocusPrevWindow?: boolean) => boolean
@@ -74,6 +74,7 @@ interface UToolsApi {
 
   onPluginEnter?: (callback: (action: UToolsAction) => void) => void
   onPluginOut?: (callback: (isKill: boolean) => void) => void
+  onDbPull?: (callback: (docs: unknown[]) => void) => void
   onMainPush?: (
     callback: (action: UToolsAction) => UToolsPushItem[],
     onSelect?: (action: UToolsAction & { option?: UToolsPushItem }) => boolean | void,
