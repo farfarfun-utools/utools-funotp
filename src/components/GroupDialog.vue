@@ -10,6 +10,7 @@ defineProps({
 const emit = defineEmits(['add', 'action'])
 const dialog = ref(null)
 const nameField = ref(null)
+const renameField = ref(null)
 const newName = ref('')
 const editingId = ref('')
 const editingName = ref('')
@@ -22,7 +23,12 @@ function open() {
 }
 
 function close() {
+  editingId.value = ''
   dialog.value?.close()
+}
+
+function closeOnBackdrop(event) {
+  if (event.target === dialog.value) close()
 }
 
 function submitNew() {
@@ -34,6 +40,15 @@ function submitNew() {
 function startRename(group) {
   editingId.value = group.id
   editingName.value = group.name
+  nextTick(() => {
+    const input = Array.isArray(renameField.value) ? renameField.value[0] : renameField.value
+    input?.focus()
+    input?.select()
+  })
+}
+
+function cancelRename() {
+  editingId.value = ''
 }
 
 function commitRename() {
@@ -45,7 +60,7 @@ defineExpose({ open, close })
 </script>
 
 <template>
-  <dialog ref="dialog" class="otp-dialog group-dialog" aria-labelledby="group-dialog-title" @cancel.prevent="close">
+  <dialog ref="dialog" class="otp-dialog group-dialog" aria-labelledby="group-dialog-title" @click="closeOnBackdrop" @cancel.prevent="close">
     <header class="otp-dialog-header">
       <span class="otp-dialog-avatar plain"><i class="iconfont icon-cat" aria-hidden="true" /></span>
       <div>
@@ -65,12 +80,13 @@ defineExpose({ open, close })
         <li v-for="(group, index) in groups" :key="group.id">
           <input
             v-if="editingId === group.id"
+            ref="renameField"
             v-model="editingName"
             class="group-rename"
             aria-label="分组名称"
             @blur="commitRename"
             @keydown.enter.prevent="commitRename"
-            @keydown.esc.prevent="editingId = ''"
+            @keydown.esc.stop.prevent="cancelRename"
           />
           <template v-else>
             <span class="group-name">{{ group.name }}</span>

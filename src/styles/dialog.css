@@ -155,7 +155,8 @@
   font-weight: 400;
   cursor: pointer;
 }
-.chip input:checked + span { border-color: var(--primary); background: var(--primary-soft); color: var(--primary); }
+.chip input:checked + span { border-color: var(--primary); background: var(--primary-soft); color: var(--primary-strong); }
+.chip input:focus-visible + span { outline: 2px solid var(--primary); outline-offset: 2px; }
 .swatch { width: 24px; height: 24px; border: 2px solid transparent; border-radius: 50%; box-shadow: inset 0 0 0 1px rgb(0 0 0 / 6%); }
 .swatch.active { border-color: var(--text); }
 .icon-input { width: 76px !important; min-height: 30px !important; margin-left: auto; padding: 4px 8px !important; text-align: center; }

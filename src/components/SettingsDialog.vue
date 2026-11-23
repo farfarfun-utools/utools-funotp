@@ -146,15 +146,20 @@ async function webdavAction(action) {
 }
 
 async function restoreWebdav(file) {
+  if (webdavLoading.value) return
+  webdavLoading.value = true
   try {
     emit('data-file', 'restore', await window.funotp.webdavRestore(webdavConfig(), file.href))
     webdavListDialog.value.close()
   } catch (error) {
     emit('message', `还原失败：${error.message}`, true)
+  } finally {
+    webdavLoading.value = false
   }
 }
 
 async function deleteWebdav(file) {
+  if (webdavLoading.value) return
   const ok = await props.confirm({
     message: `删除云端备份「${file.name}」？`,
     detail: 'WebDav 上的这个文件会被删掉，本地账号不受影响。',
@@ -162,12 +167,15 @@ async function deleteWebdav(file) {
     danger: true,
   })
   if (!ok) return
+  webdavLoading.value = true
   try {
     await window.funotp.webdavDelete(webdavConfig(), file.href)
     webdavFiles.value = webdavFiles.value.filter(item => item.href !== file.href)
     emit('message', '已删除')
   } catch (error) {
     emit('message', `删除失败：${error.message}`, true)
+  } finally {
+    webdavLoading.value = false
   }
 }
 
@@ -343,8 +351,8 @@ defineExpose({ open, close })
       <div v-for="file in webdavFiles" :key="file.href">
         <span>{{ file.name }}</span>
         <small>{{ (file.size / 1024).toFixed(2) }}kb</small>
-        <button type="button" @click="restoreWebdav(file)">还原</button>
-        <button type="button" class="danger-text" @click="deleteWebdav(file)">删除</button>
+        <button type="button" :disabled="webdavLoading" @click="restoreWebdav(file)">还原</button>
+        <button type="button" class="danger-text" :disabled="webdavLoading" @click="deleteWebdav(file)">删除</button>
       </div>
     </div>
     <div v-else class="webdav-empty">暂无数据</div>

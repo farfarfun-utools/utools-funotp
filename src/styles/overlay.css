@@ -21,8 +21,10 @@
   text-align: left;
   white-space: nowrap;
 }
-.context-menu button:hover { color: var(--primary); background: var(--primary-soft); outline: 0; }
-.context-menu button.danger:hover { color: var(--danger); background: var(--danger-soft); }
+.context-menu button:hover,
+.context-menu button:focus-visible { color: var(--primary-strong); background: var(--primary-soft); outline: 0; }
+.context-menu button.danger:hover,
+.context-menu button.danger:focus-visible { color: var(--danger); background: var(--danger-soft); }
 .context-menu .menu-icon { width: 16px; flex: 0 0 16px; margin-right: 8px; color: var(--placeholder); font-size: 15px; }
 .context-menu button:hover .menu-icon { color: inherit; }
 .menu-divider { display: block; height: 11px; padding: 5px 0; }

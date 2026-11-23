@@ -95,8 +95,15 @@ function handleDragStart(id, event) {
   if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
 }
 
+function handleDragEnd() {
+  draggedId.value = null
+}
+
 function handleDrop(targetId) {
-  if (!draggedId.value || draggedId.value === targetId) return
+  if (!draggedId.value || draggedId.value === targetId) {
+    draggedId.value = null
+    return
+  }
   otp.reorderAccounts(draggedId.value, targetId)
   draggedId.value = null
 }
@@ -212,6 +219,7 @@ onBeforeUnmount(() => {
           :columns="state.settings.display.columns"
           :active-id="otp.activeAccount.value?.id || ''"
           :copied-id="copiedId"
+          :dragged-id="draggedId || ''"
           :show-next="state.settings.display.showNext"
           :trash-view="trashView"
           :show-add="!trashView && !otp.search.value.trim()"
@@ -222,6 +230,7 @@ onBeforeUnmount(() => {
           @favorite="otp.toggleFavorite"
           @context-menu="openContextMenu"
           @drag-start="handleDragStart"
+          @drag-end="handleDragEnd"
           @drop="handleDrop"
         />
       </div>

@@ -87,6 +87,7 @@ let previewToken = 0
 watch(() => [draft.secret, draft.algorithm, draft.digits, draft.encoding, draft.type, draft.counter, draft.period], async () => {
   const token = (previewToken += 1)
   error.value = ''
+  saveError.value = ''
   if (!draft.secret.trim()) return void (preview.value = '')
   try {
     const code = formatCode(await generateOtp({ ...draft, counter: counterFor(draft) }))
@@ -97,6 +98,13 @@ watch(() => [draft.secret, draft.algorithm, draft.digits, draft.encoding, draft.
     error.value = issue.message
   }
 })
+
+function setMode(nextMode) {
+  mode.value = nextMode
+  error.value = ''
+  saveError.value = ''
+  if (nextMode === 'manual') nextTick(() => secretField.value?.focus())
+}
 
 function applyParsed(list) {
   if (list.length === 1) {
@@ -122,9 +130,13 @@ function parseText(text, source) {
 async function scanImage(source, label) {
   busy.value = label
   error.value = ''
+  saveError.value = ''
   try {
-    parseText(await decodeQrImage(source), '二维码')
+    const decoded = await decodeQrImage(source)
+    if (!dialog.value?.open) return
+    parseText(decoded, '二维码')
   } catch (issue) {
+    if (!dialog.value?.open) return
     error.value = issue.message
   } finally {
     busy.value = ''
@@ -203,7 +215,7 @@ defineExpose({ open, close, saveError })
       <div v-if="!editing" class="mode-tabs" role="tablist">
         <button
           v-for="tab in [['scan', '扫码识别'], ['uri', '粘贴链接'], ['manual', '手动输入']]" :key="tab[0]"
-          type="button" role="tab" :aria-selected="mode === tab[0]" :class="{ active: mode === tab[0] }" @click="mode = tab[0]"
+          type="button" role="tab" :aria-selected="mode === tab[0]" :class="{ active: mode === tab[0] }" @click="setMode(tab[0])"
         >
           {{ tab[1] }}
         </button>

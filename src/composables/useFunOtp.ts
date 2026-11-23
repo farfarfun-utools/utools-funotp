@@ -129,6 +129,10 @@ export function useFunOtp({ confirm = fallbackConfirm }: { confirm?: (options: C
   // 搜索词或分组一变，列表内容就整个换了，原来的下标指向的已经不是同一张卡片。
   const activeIndex = ref(-1)
   watch([search, () => state.value.currentView], () => { activeIndex.value = -1 })
+  watch(() => currentAccounts.value.length, length => {
+    if (length === 0) activeIndex.value = -1
+    else if (activeIndex.value >= length) activeIndex.value = length - 1
+  })
 
   const activeAccount = computed(() => currentAccounts.value[activeIndex.value] || null)
 
@@ -810,6 +814,7 @@ export function useFunOtp({ confirm = fallbackConfirm }: { confirm?: (options: C
   function stopTicking() {
     clearTimeout(alignTimer)
     clearInterval(timer)
+    clearTimeout(toastTimer)
     alignTimer = undefined
     timer = undefined
     flushSaves()

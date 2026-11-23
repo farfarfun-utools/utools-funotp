@@ -38,18 +38,21 @@
 .switch-control::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .2s; }
 .switch-line input:checked + .switch-control { background: var(--primary); }
 .switch-line input:checked + .switch-control::after { transform: translateX(20px); }
+.switch-line input:focus-visible + .switch-control { outline: 2px solid var(--primary); outline-offset: 2px; }
 
 .segmented { display: inline-flex; padding: 3px; border: 1px solid var(--border); border-radius: 10px; }
 .segmented label { display: block; }
 .segmented input { position: absolute; opacity: 0; }
-.segmented span { min-height: 28px; display: grid; place-items: center; padding: 4px 12px; border-radius: 7px; color: var(--muted); font-size: 13px; cursor: pointer; }
-.segmented input:checked + span { background: var(--primary-soft); color: var(--primary); }
+.segmented span { min-height: 28px; display: grid; place-items: center; padding: 4px 12px; border-radius: 7px; color: var(--muted); font-size: 13px; cursor: pointer; transition: color .15s ease, background-color .15s ease; }
+.segmented input:checked + span { background: var(--primary-soft); color: var(--primary-strong); font-weight: 500; }
+.segmented input:focus-visible + span { outline: 2px solid var(--primary); outline-offset: 2px; }
 
 .checkbox-row { display: flex; align-items: center; gap: 24px; margin-top: 5px; }
 .check { display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 14px; cursor: pointer; }
 .check input { position: absolute; opacity: 0; }
 .check > span { position: relative; width: 14px; height: 14px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); pointer-events: none; }
 .check input:checked + span { border-color: var(--primary); background: var(--primary); }
+.check input:focus-visible + span { outline: 2px solid var(--primary); outline-offset: 2px; }
 .check input:checked + span::after { content: ''; position: absolute; top: 1px; left: 4px; width: 3px; height: 7px; border: solid #fff; border-width: 0 1px 1px 0; transform: rotate(45deg); }
 .check.disabled { color: var(--placeholder); cursor: not-allowed; }
 .check.disabled input:checked + span { border-color: var(--disabled-check-border); background: var(--disabled-check-bg); }
@@ -73,9 +76,9 @@
 .data-button { min-height: 34px; padding: 6px 14px; border-radius: 10px; color: #fff; font-size: 14px; }
 .data-button:hover:not(:disabled) { filter: brightness(1.06); }
 .button-pair .data-button { width: 50%; }
-.data-button.warning { background: #ffba08; }
-.data-button.success { background: var(--success); }
-.data-button.primary { background: var(--primary); }
+.data-button.warning { background: #c97d00; }
+.data-button.success { background: #009c84; }
+.data-button.primary { background: #1796aa; }
 .data-button.danger { background: var(--danger); }
 .input-group { display: flex; width: 100%; margin-bottom: 12px; overflow: hidden; border: 1px solid var(--control-border); border-radius: 10px; font-size: 14px; }
 .input-group span { display: flex; align-items: center; padding: 0 14px; border-right: 1px solid var(--control-border); background: var(--fill-light); white-space: nowrap; }

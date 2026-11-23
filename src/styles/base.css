@@ -167,3 +167,9 @@ button, input, select, textarea { margin: 0; font: inherit; letter-spacing: 0; c
 button { padding: 0; border: 0; background: transparent; cursor: pointer; }
 button:disabled { cursor: not-allowed; opacity: .55; }
 button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+.main, .otp-dialog-body, .settings-body, .webdav-file-list { scrollbar-width: thin; scrollbar-color: var(--control-border) transparent; }
+.main::-webkit-scrollbar, .otp-dialog-body::-webkit-scrollbar, .settings-body::-webkit-scrollbar, .webdav-file-list::-webkit-scrollbar { width: 6px; height: 6px; }
+.main::-webkit-scrollbar-track, .otp-dialog-body::-webkit-scrollbar-track, .settings-body::-webkit-scrollbar-track, .webdav-file-list::-webkit-scrollbar-track { background: transparent; }
+.main::-webkit-scrollbar-thumb, .otp-dialog-body::-webkit-scrollbar-thumb, .settings-body::-webkit-scrollbar-thumb, .webdav-file-list::-webkit-scrollbar-thumb { border-radius: 999px; background: var(--control-border); }
+.main::-webkit-scrollbar-thumb:hover, .otp-dialog-body::-webkit-scrollbar-thumb:hover, .settings-body::-webkit-scrollbar-thumb:hover, .webdav-file-list::-webkit-scrollbar-thumb:hover { background: var(--placeholder); }

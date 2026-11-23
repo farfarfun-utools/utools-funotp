@@ -10,33 +10,48 @@ const account = ref(null)
 const image = ref('')
 const uri = ref('')
 const revealed = ref(false)
+let renderToken = 0
+
+function reset() {
+  renderToken += 1
+  account.value = null
+  image.value = ''
+  uri.value = ''
+  revealed.value = false
+}
 
 async function open(value) {
+  const token = (renderToken += 1)
   account.value = value
   revealed.value = false
   image.value = ''
   uri.value = buildOtpauthUri(value)
   if (!dialog.value.open) dialog.value.showModal()
   try {
-    image.value = await toQrDataUrl(uri.value)
+    const dataUrl = await toQrDataUrl(uri.value)
+    if (token !== renderToken || !dialog.value?.open) return
+    image.value = dataUrl
   } catch (error) {
+    if (token !== renderToken || !dialog.value?.open) return
     emit('message', `二维码生成失败：${error.message}`, true)
   }
 }
 
 function close() {
   // 关掉对话框就把二维码丢掉，免得下次打开时先闪一下上一个账号的码。
-  account.value = null
-  image.value = ''
-  uri.value = ''
+  reset()
   dialog.value?.close()
+}
+
+function closeOnBackdrop(event) {
+  if (event.target === dialog.value) close()
 }
 
 defineExpose({ open, close })
 </script>
 
 <template>
-  <dialog ref="dialog" class="otp-dialog qr-dialog" aria-labelledby="qr-dialog-title" @cancel.prevent="close">
+  <dialog ref="dialog" class="otp-dialog qr-dialog" aria-labelledby="qr-dialog-title" @click="closeOnBackdrop" @cancel.prevent="close" @close="reset">
     <header class="otp-dialog-header">
       <div>
         <h2 id="qr-dialog-title">导出到其他设备</h2>

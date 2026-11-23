@@ -20,12 +20,13 @@ const props = defineProps({
   // 方向键选中的账号 id，空串表示没有选中。
   activeId: { type: String, default: '' },
   copiedId: { type: String, default: '' },
+  draggedId: { type: String, default: '' },
   showNext: Boolean,
   trashView: Boolean,
   showAdd: Boolean,
   emptyText: { type: String, default: '还没有账号' },
 })
-const emit = defineEmits(['add', 'copy', 'edit', 'favorite', 'context-menu', 'drag-start', 'drop'])
+const emit = defineEmits(['add', 'copy', 'edit', 'favorite', 'context-menu', 'drag-start', 'drag-end', 'drop'])
 
 const grid = ref(null)
 
@@ -63,6 +64,7 @@ defineExpose({ columnCount })
         :ring-sync="ringSync"
         :active="account.id === activeId"
         :copied="account.id === copiedId"
+        :dragging="account.id === draggedId"
         :show-next="showNext"
         :trash-view="trashView"
         @copy="emit('copy', $event)"
@@ -70,6 +72,7 @@ defineExpose({ columnCount })
         @favorite="emit('favorite', $event)"
         @context-menu="(account, event) => emit('context-menu', account, event)"
         @drag-start="(id, event) => emit('drag-start', id, event)"
+        @drag-end="emit('drag-end')"
         @drop="emit('drop', $event)"
       />
       <button v-if="showAdd" class="add-item" type="button" aria-label="添加账号" @click="emit('add')">
