@@ -43,5 +43,18 @@
     "vue-tsc": "^3.3.12"
   },
   "description": "密钥随行 FunOTP：本地管理两步验证账号，离线生成 TOTP / HOTP 动态验证码",
+  "keywords": [
+    "utools",
+    "utools-plugin",
+    "funotp",
+    "2fa",
+    "totp",
+    "hotp",
+    "authenticator",
+    "offline",
+    "vue3",
+    "typescript",
+    "farfarfun"
+  ],
   "homepage": "https://farfarfun.github.io/packages/utools-funotp/"
 }
